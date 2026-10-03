@@ -8,6 +8,7 @@ export const INITIAL_DATA = {
       name: "Hj. Asmawati (Owner)",
       phone: "081234567890",
       role: "admin",
+      pin: "1234",
       isActive: true
     },
     {
@@ -15,6 +16,7 @@ export const INITIAL_DATA = {
       name: "Daeng Rahmat",
       phone: "082198765432",
       role: "courier",
+      pin: "1111",
       isActive: true,
       vehicle: "Motor Roda Tiga (Tossa)"
     },
@@ -23,6 +25,7 @@ export const INITIAL_DATA = {
       name: "Andi Pratama",
       phone: "085345678901",
       role: "courier",
+      pin: "2222",
       isActive: true,
       vehicle: "Sepeda Motor Obrok"
     }

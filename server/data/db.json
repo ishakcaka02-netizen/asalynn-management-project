@@ -1,0 +1,82 @@
+{
+  "users": [
+    {
+      "id": "usr-admin-1",
+      "name": "Hj. Asmawati (Owner)",
+      "phone": "081234567890",
+      "role": "admin",
+      "pin": "1234",
+      "isActive": true
+    },
+    {
+      "id": "usr-courier-1",
+      "name": "Daeng Rahmat",
+      "phone": "082198765432",
+      "role": "courier",
+      "pin": "1111",
+      "isActive": true,
+      "vehicle": "Motor Roda Tiga (Tossa)"
+    },
+    {
+      "id": "usr-courier-2",
+      "name": "Andi Pratama",
+      "phone": "085345678901",
+      "role": "courier",
+      "pin": "2222",
+      "isActive": true,
+      "vehicle": "Sepeda Motor Obrok"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod-refill-19l",
+      "name": "Refill Air Galon 19L Asalynn",
+      "code": "RFL-19",
+      "standardPrice": 7000,
+      "description": "Air minum isi ulang higienis proses filter 8 tahap & ozonisasi",
+      "unit": "Galon",
+      "isActive": true
+    },
+    {
+      "id": "prod-new-gallon-19l",
+      "name": "Galon Baru + Air 19L",
+      "code": "GLN-NEW",
+      "standardPrice": 45000,
+      "description": "Galon PET food grade baru tebal lengkap dengan isi air Asalynn",
+      "unit": "Galon",
+      "isActive": true
+    },
+    {
+      "id": "prod-cup-dus",
+      "name": "Air Mineral Gelas Asalynn (Dus 48x220ml)",
+      "code": "CUP-48",
+      "standardPrice": 19000,
+      "description": "Dus air kemasan gelas cocok untuk acara & warung",
+      "unit": "Dus",
+      "isActive": true
+    },
+    {
+      "id": "prod-bottle-600",
+      "name": "Air Mineral Botol 600ml (Dus 24 botol)",
+      "code": "BTL-600",
+      "standardPrice": 35000,
+      "description": "Air kemasan botol praktis untuk kantor & hajatan",
+      "unit": "Dus",
+      "isActive": true
+    },
+    {
+      "id": "prod-cap-seal",
+      "name": "Tutup Galon & Tisu Higienis (Paket Ekstra)",
+      "code": "SEAL-PK",
+      "standardPrice": 2000,
+      "description": "Tutup ekstra anti-bocor dan tisu pembersih mulut galon",
+      "unit": "Set",
+      "isActive": true
+    }
+  ],
+  "customers": [],
+  "orders": [],
+  "payments": [],
+  "gallonLogs": [],
+  "lastUpdated": "2026-10-03T22:24:03.222Z"
+}

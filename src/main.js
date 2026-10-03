@@ -41,19 +41,491 @@ let reconciliationDate = getWitaDate();
 // Inisialisasi Aplikasi
 document.addEventListener("DOMContentLoaded", () => {
   initClock();
-  initRoleSwitcher();
   initTabNavigation();
   initModalListeners();
   initFormHandlers();
+  initAuthUI();
+  initSettingsUI();
 
   // Subscribe ke perubahan store
   store.subscribe(() => {
+    updateHeaderAccountWidget();
     renderApp();
   });
 
   // Render awal
+  updateHeaderAccountWidget();
   renderApp();
 });
+
+// ==========================================
+// 0. AUTHENTICATION & LOGIN MENU CONTROLLER
+// ==========================================
+let authSelectedUserId = "usr-admin-1";
+let authEnteredPin = "";
+
+function updateHeaderAccountWidget() {
+  const accountWidget = document.getElementById("user-account-widget");
+  const btnHeaderLogin = document.getElementById("btn-header-login");
+  const avatarEl = document.getElementById("header-user-avatar");
+  const nameEl = document.getElementById("header-user-name");
+  const roleEl = document.getElementById("header-user-role");
+
+  const ddAvatar = document.getElementById("dropdown-user-avatar");
+  const ddName = document.getElementById("dropdown-user-name");
+  const ddPhone = document.getElementById("dropdown-user-phone");
+  const ddTag = document.getElementById("dropdown-user-tag");
+
+  const user = store.getCurrentUser();
+  const btnQuickSettings = document.getElementById("btn-quick-settings");
+
+  if (store.isLoggedIn() && user) {
+    if (accountWidget) accountWidget.style.display = "block";
+    if (btnQuickSettings) btnQuickSettings.style.display = "inline-flex";
+    if (btnHeaderLogin) btnHeaderLogin.style.display = "none";
+
+    const avatar = "👑";
+
+    if (avatarEl) avatarEl.textContent = avatar;
+    if (nameEl) nameEl.textContent = user.name.split(" ")[0];
+    if (roleEl) roleEl.textContent = "Owner";
+
+    if (ddAvatar) ddAvatar.textContent = avatar;
+    if (ddName) ddName.textContent = user.name;
+    if (ddPhone) ddPhone.textContent = user.phone;
+    if (ddTag) ddTag.textContent = "Pemilik & Admin Depot";
+  } else {
+    // Sembunyikan elemen dashboard saat di Landing Page Login
+    if (accountWidget) accountWidget.style.display = "none";
+    if (btnQuickSettings) btnQuickSettings.style.display = "none";
+    if (btnHeaderLogin) btnHeaderLogin.style.display = "none";
+  }
+}
+
+function initAuthUI() {
+  const accountWidget = document.getElementById("user-account-widget");
+  const btnAccountMenu = document.getElementById("btn-account-menu");
+  const btnSwitchAccount = document.getElementById("btn-open-login-modal");
+  const btnLogout = document.getElementById("btn-logout");
+  const btnHeaderLogin = document.getElementById("btn-header-login");
+
+  // Toggle dropdown menu akun
+  if (btnAccountMenu && accountWidget) {
+    btnAccountMenu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      accountWidget.classList.toggle("open");
+    });
+  }
+
+  // Tutup dropdown jika klik di luar
+  document.addEventListener("click", (e) => {
+    if (accountWidget && !accountWidget.contains(e.target)) {
+      accountWidget.classList.remove("open");
+    }
+  });
+
+  // Tombol Ganti Akun / Pindah Peran
+  if (btnSwitchAccount) {
+    btnSwitchAccount.addEventListener("click", () => {
+      if (accountWidget) accountWidget.classList.remove("open");
+      openLoginModal();
+    });
+  }
+
+  // Tombol Keluar (Logout)
+  if (btnLogout) {
+    btnLogout.addEventListener("click", () => {
+      if (accountWidget) accountWidget.classList.remove("open");
+      store.logout();
+      showToast("Anda telah keluar dari sesi operasional.", "info");
+      updateHeaderAccountWidget();
+      renderApp();
+      openLoginModal();
+    });
+  }
+
+  // Tombol Login di Header (saat logout)
+  if (btnHeaderLogin) {
+    btnHeaderLogin.addEventListener("click", () => {
+      openLoginModal();
+    });
+  }
+
+  // Tombol Keypad Virtual Numpad
+  const numpadKeys = document.querySelectorAll(".keypad-key[data-digit]");
+  numpadKeys.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const digit = btn.getAttribute("data-digit");
+      if (digit !== null) {
+        handlePinInput(digit);
+      }
+    });
+  });
+
+  document.getElementById("btn-keypad-clear")?.addEventListener("click", () => {
+    authEnteredPin = "";
+    updatePinDots();
+    hidePinError();
+  });
+
+  document.getElementById("btn-keypad-backspace")?.addEventListener("click", () => {
+    if (authEnteredPin.length > 0) {
+      authEnteredPin = authEnteredPin.slice(0, -1);
+      updatePinDots();
+      hidePinError();
+    }
+  });
+
+  document.getElementById("btn-do-login")?.addEventListener("click", () => {
+    submitLogin();
+  });
+
+  // Demo Pin Chips
+  document.querySelectorAll(".demo-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const userId = chip.getAttribute("data-user");
+      const pin = chip.getAttribute("data-pin");
+      if (userId && pin) {
+        authSelectedUserId = userId;
+        authEnteredPin = pin;
+        renderLoginProfiles();
+        updatePinDots();
+        submitLogin();
+      }
+    });
+  });
+
+  // Dukungan Keyboard Fisik untuk PIN saat modal aktif
+  window.addEventListener("keydown", (e) => {
+    const modal = document.getElementById("modal-login-account");
+    if (!modal || !modal.classList.contains("active")) return;
+
+    if (e.key >= "0" && e.key <= "9") {
+      handlePinInput(e.key);
+    } else if (e.key === "Backspace") {
+      if (authEnteredPin.length > 0) {
+        authEnteredPin = authEnteredPin.slice(0, -1);
+        updatePinDots();
+        hidePinError();
+      }
+    } else if (e.key === "Enter") {
+      submitLogin();
+    } else if (e.key === "Escape") {
+      if (store.isLoggedIn()) {
+        closeModal("modal-login-account");
+      }
+    }
+  });
+}
+
+function openSettingsModal() {
+  const currentUser = store.getCurrentUser();
+  const userEl = document.getElementById("settings-current-user");
+  const ordersEl = document.getElementById("settings-count-orders");
+  const custsEl = document.getElementById("settings-count-customers");
+
+  if (userEl) userEl.textContent = currentUser ? currentUser.name : "Belum Login";
+  if (ordersEl) ordersEl.textContent = `${store.data.orders.length} pesanan`;
+  if (custsEl) custsEl.textContent = `${store.data.customers.length} orang`;
+
+  openModal("modal-global-settings");
+}
+
+function initSettingsUI() {
+  const btnQuickSettings = document.getElementById("btn-quick-settings");
+  const btnDropdownSettings = document.getElementById("btn-open-settings-modal");
+
+  btnQuickSettings?.addEventListener("click", () => {
+    openSettingsModal();
+  });
+
+  btnDropdownSettings?.addEventListener("click", () => {
+    const dd = document.getElementById("account-dropdown-menu");
+    if (dd) dd.classList.remove("show");
+    openSettingsModal();
+  });
+
+  // Export JSON from settings modal
+  document.getElementById("btn-settings-export")?.addEventListener("click", () => {
+    const jsonStr = store.exportJSON();
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `asalynn-backup-${getWitaDate()}.json`;
+    a.click();
+    showToast("File cadangan JSON berhasil diunduh!", "success");
+  });
+
+  // Import JSON from settings modal
+  document.getElementById("settings-import-file")?.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const res = store.importJSON(evt.target.result);
+      if (res.success) {
+        showToast("Data cadangan berhasil dipulihkan!", "success");
+        closeModal("modal-global-settings");
+        renderApp();
+      } else {
+        showToast(`Gagal memulihkan: ${res.message}`, "error");
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // Trigger Reset Global (Open confirmation modal)
+  document.getElementById("btn-trigger-global-reset")?.addEventListener("click", () => {
+    openModal("modal-confirm-global-reset");
+  });
+
+  // Execute Reset Global (Reset to 0)
+  document.getElementById("btn-execute-global-reset")?.addEventListener("click", async () => {
+    // 1. Reset local store ke 0 (Kosongkan transaksi & pelanggan)
+    store.resetToZero();
+
+    // 2. Jika backend API aktif, sinkronkan reset 0 ke backend
+    try {
+      await fetch("/api/system/clear-zero", { method: "POST" });
+    } catch (err) {
+      // Local storage tetap berhasil direset
+    }
+
+    closeModal("modal-confirm-global-reset");
+    closeModal("modal-global-settings");
+    showToast("✅ Database berhasil direset ke 0! Seluruh pelanggan & transaksi telah dikosongkan. Web siap digunakan dari awal.", "success");
+    renderApp();
+  });
+}
+
+function openLoginModal(defaultUserId) {
+  const currentUser = store.getCurrentUser();
+  authSelectedUserId = defaultUserId || (currentUser ? currentUser.id : "usr-admin-1");
+  authEnteredPin = "";
+  hidePinError();
+  renderLoginProfiles();
+  updatePinDots();
+  openModal("modal-login-account");
+}
+
+function renderLoginProfiles() {
+  const container = document.getElementById("login-profile-selector");
+  if (!container) return;
+
+  const adminUsers = (store.data.users || []).filter(u => u.role === "admin");
+  const usersToDisplay = adminUsers.length > 0 ? adminUsers : store.data.users;
+
+  if (!usersToDisplay.some(u => u.id === authSelectedUserId)) {
+    authSelectedUserId = usersToDisplay[0]?.id || "usr-admin-1";
+  }
+
+  container.innerHTML = usersToDisplay.map(u => {
+    const isSelected = u.id === authSelectedUserId;
+    return `
+      <div class="profile-card-option ${isSelected ? 'active' : ''}" data-user-id="${u.id}">
+        <div class="profile-card-left">
+          <div class="profile-card-avatar">👑</div>
+          <div>
+            <div class="profile-card-name">${u.name}</div>
+            <div class="profile-card-sub">Pemilik & Admin Depot • ${u.phone}</div>
+          </div>
+        </div>
+        <span class="profile-card-badge">Admin</span>
+      </div>
+    `;
+  }).join("");
+
+  const selectedUser = users.find(u => u.id === authSelectedUserId);
+  const targetNameEl = document.getElementById("pin-target-name");
+  if (targetNameEl && selectedUser) {
+    targetNameEl.textContent = selectedUser.name;
+  }
+
+  container.querySelectorAll(".profile-card-option").forEach(card => {
+    card.addEventListener("click", () => {
+      authSelectedUserId = card.getAttribute("data-user-id");
+      authEnteredPin = "";
+      hidePinError();
+      renderLoginProfiles();
+      updatePinDots();
+    });
+  });
+}
+
+function handlePinInput(digit) {
+  if (authEnteredPin.length < 4) {
+    authEnteredPin += digit;
+    updatePinDots();
+    hidePinError();
+
+    if (authEnteredPin.length === 4) {
+      setTimeout(() => {
+        submitLogin();
+      }, 150);
+    }
+  }
+}
+
+function updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById(`pindot-${i}`);
+    if (dot) {
+      if (i < authEnteredPin.length) {
+        dot.classList.add("filled");
+      } else {
+        dot.classList.remove("filled");
+      }
+    }
+  }
+}
+
+function hidePinError() {
+  const errBox = document.getElementById("login-error-box");
+  if (errBox) errBox.style.display = "none";
+}
+
+function showPinError(msg) {
+  const errBox = document.getElementById("login-error-box");
+  const errMsg = document.getElementById("login-error-msg");
+  const pinDisplay = document.getElementById("pin-dots-display");
+
+  if (errMsg) errMsg.textContent = msg;
+  if (errBox) errBox.style.display = "flex";
+
+  if (pinDisplay) {
+    pinDisplay.classList.add("shake-anim");
+    setTimeout(() => pinDisplay.classList.remove("shake-anim"), 400);
+  }
+}
+
+function showLandingPinError(msg) {
+  const errBox = document.getElementById("landing-error-box");
+  const errMsg = document.getElementById("landing-error-msg");
+  const pinDots = document.getElementById("landing-pin-dots");
+
+  if (errMsg) errMsg.textContent = msg;
+  if (errBox) errBox.style.display = "flex";
+
+  if (pinDots) {
+    pinDots.classList.add("shake-anim");
+    setTimeout(() => pinDots.classList.remove("shake-anim"), 400);
+  }
+}
+
+function hideLandingPinError() {
+  const errBox = document.getElementById("landing-error-box");
+  if (errBox) errBox.style.display = "none";
+}
+
+function updateLandingPinDots() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById(`lp-dot-${i}`);
+    if (dot) {
+      if (i < authEnteredPin.length) {
+        dot.classList.add("filled");
+      } else {
+        dot.classList.remove("filled");
+      }
+    }
+  }
+}
+
+function submitLogin() {
+  if (authEnteredPin.length === 0) {
+    showPinError("Silakan masukkan 4 digit PIN Anda.");
+    showLandingPinError("Silakan masukkan 4 digit PIN Anda.");
+    return;
+  }
+
+  const result = store.login(authSelectedUserId, authEnteredPin);
+  if (result.success) {
+    closeModal("modal-login-account");
+    showToast(`Selamat datang kembali, ${result.user.name}!`, "success");
+    authEnteredPin = "";
+    updatePinDots();
+    updateLandingPinDots();
+    updateHeaderAccountWidget();
+    renderApp();
+  } else {
+    showPinError(result.message || "PIN yang Anda masukkan salah.");
+    showLandingPinError(result.message || "PIN yang Anda masukkan salah.");
+    authEnteredPin = "";
+    updatePinDots();
+    updateLandingPinDots();
+  }
+}
+
+function attachLandingLoginEvents() {
+  // Profile selector
+  document.querySelectorAll("#landing-profiles-grid .landing-profile-item").forEach(card => {
+    card.addEventListener("click", () => {
+      authSelectedUserId = card.getAttribute("data-uid");
+      authEnteredPin = "";
+      hideLandingPinError();
+      // Re-render landing page to update active state
+      renderApp();
+    });
+  });
+
+  // Numpad keys
+  document.querySelectorAll("#landing-keypad .keypad-key[data-digit]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const digit = btn.getAttribute("data-digit");
+      if (authEnteredPin.length < 4) {
+        authEnteredPin += digit;
+        updateLandingPinDots();
+        hideLandingPinError();
+        if (authEnteredPin.length === 4) {
+          setTimeout(() => submitLogin(), 150);
+        }
+      }
+    });
+  });
+
+  // Clear
+  document.getElementById("lp-btn-clear")?.addEventListener("click", () => {
+    authEnteredPin = "";
+    updateLandingPinDots();
+    hideLandingPinError();
+  });
+
+  // Backspace
+  document.getElementById("lp-btn-backspace")?.addEventListener("click", () => {
+    if (authEnteredPin.length > 0) {
+      authEnteredPin = authEnteredPin.slice(0, -1);
+      updateLandingPinDots();
+      hideLandingPinError();
+    }
+  });
+
+  // Login button
+  document.getElementById("lp-btn-login")?.addEventListener("click", () => {
+    submitLogin();
+  });
+
+  // Demo chips
+  content.querySelectorAll(".demo-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const userId = chip.getAttribute("data-user");
+      const pin = chip.getAttribute("data-pin");
+      if (userId && pin) {
+        authSelectedUserId = userId;
+        authEnteredPin = pin;
+        updateLandingPinDots();
+        // Re-render profile selection then submit
+        renderApp();
+        // Small delay to let re-render finish, then login
+        setTimeout(() => submitLogin(), 100);
+      }
+    });
+  });
+
+  // Keyboard support on landing page (when no modal is open)
+  // This is already handled by the global keydown listener in initAuthUI
+  // but we need the landing page dots to update too
+  updateLandingPinDots();
+}
 
 // 1. Clock WITA
 function initClock() {
@@ -67,51 +539,7 @@ function initClock() {
   setInterval(tick, 1000);
 }
 
-// 2. Role Switcher
-function initRoleSwitcher() {
-  const btnAdmin = document.getElementById("btn-role-admin");
-  const btnCourier = document.getElementById("btn-role-courier");
-  const courierSelectContainer = document.getElementById("courier-select-container");
-  const courierSelect = document.getElementById("select-active-courier");
-
-  function updateCourierOptions() {
-    const couriers = store.data.users.filter(u => u.role === "courier");
-    courierSelect.innerHTML = couriers.map(c => 
-      `<option value="${c.id}" ${c.id === store.data.activeCourierId ? 'selected' : ''}>🛵 ${c.name}</option>`
-    ).join("");
-  }
-
-  btnAdmin.addEventListener("click", () => {
-    store.setCurrentRole("admin");
-    btnAdmin.classList.add("active");
-    btnCourier.classList.remove("active");
-    courierSelectContainer.style.display = "none";
-    document.getElementById("admin-tabs").style.display = "flex";
-    showToast("Beralih ke Mode Pemilik / Admin", "info");
-    renderApp();
-  });
-
-  btnCourier.addEventListener("click", () => {
-    store.setCurrentRole("courier");
-    btnCourier.classList.add("active");
-    btnAdmin.classList.remove("active");
-    courierSelectContainer.style.display = "flex";
-    document.getElementById("admin-tabs").style.display = "none";
-    updateCourierOptions();
-    showToast(`Beralih ke Mode Pengantar HP (${store.getCurrentUser().name})`, "info");
-    renderApp();
-  });
-
-  courierSelect.addEventListener("change", (e) => {
-    store.setActiveCourier(e.target.value);
-    showToast(`Mengaktifkan HP: ${store.getCurrentUser().name}`, "info");
-    renderApp();
-  });
-
-  updateCourierOptions();
-}
-
-// 3. Tab Navigation
+// 2. Tab Navigation
 function initTabNavigation() {
   const tabBtns = document.querySelectorAll(".nav-tab");
   tabBtns.forEach(btn => {
@@ -124,7 +552,7 @@ function initTabNavigation() {
   });
 }
 
-// 4. Modal Handlers
+// 3. Modal Handlers
 function openModal(modalId) {
   const el = document.getElementById(modalId);
   if (el) el.classList.add("active");
@@ -158,206 +586,131 @@ function renderApp() {
   const content = document.getElementById("app-content");
   if (!content) return;
 
-  if (store.data.currentRole === "courier") {
-    renderCourierView(content);
-  } else {
-    // Mode Admin
-    switch (activeTab) {
-      case "orders":
-        renderOrdersTab(content);
-        break;
-      case "customers":
-        renderCustomersTab(content);
-        break;
-      case "products":
-        renderProductsTab(content);
-        break;
-      case "reconciliation":
-        renderReconciliationTab(content);
-        break;
-      default:
-        renderOrdersTab(content);
-    }
+  const adminTabs = document.getElementById("admin-tabs");
+
+  // Jika belum login, tampilkan Landing Page Menu Login langsung
+  if (!store.isLoggedIn()) {
+    if (adminTabs) adminTabs.style.display = "none";
+
+    const adminUsers = (store.data.users || []).filter(u => u.role === "admin");
+    const users = adminUsers.length > 0 ? adminUsers : store.data.users;
+    const selectedUser = users.find(u => u.id === authSelectedUserId) || users[0];
+
+    content.innerHTML = `
+      <div class="landing-login-wrapper">
+        <!-- Hero Branding -->
+        <div class="landing-hero-card">
+          <div class="landing-hero-badge">💧</div>
+          <h2 class="landing-hero-title">ASALYNN DEPOT</h2>
+          <p class="landing-hero-desc">Sistem Manajemen Galon & Pengantaran — Masuk untuk memulai operasional harian depot air minum.</p>
+        </div>
+
+        <!-- Portal Login Card -->
+        <div class="landing-portal-card">
+          <div class="landing-portal-header">
+            <h2>🔐 Masuk ke Sistem</h2>
+            <p>Pilih akun Anda dan masukkan 4 digit PIN operasional</p>
+          </div>
+
+          <div class="landing-portal-body">
+            <!-- Pilihan Profil Akun -->
+            <div>
+              <label class="form-label" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:0.5rem; display:block;">Pilih Pengguna:</label>
+              <div class="landing-profiles-grid" id="landing-profiles-grid">
+                ${users.map(u => {
+                  const avatar = "👑";
+                  const sub = "Pemilik & Kasir Depot • " + u.phone;
+                  const tagText = "Admin";
+                  const tagClass = "tag-admin";
+                  const isActive = u.id === authSelectedUserId;
+                  return `
+                    <div class="landing-profile-item ${isActive ? 'active' : ''}" data-uid="${u.id}">
+                      <div class="landing-item-avatar">${avatar}</div>
+                      <div class="landing-item-meta">
+                        <span class="landing-item-name">${u.name}</span>
+                        <span class="landing-item-sub">${sub}</span>
+                      </div>
+                      <span class="landing-item-tag ${tagClass}">${tagText}</span>
+                    </div>`;
+                }).join("")}
+              </div>
+            </div>
+
+            <!-- PIN Section -->
+            <div class="landing-pin-section">
+              <div class="landing-pin-header">
+                Masukkan PIN untuk: <strong id="landing-pin-target">${selectedUser ? selectedUser.name : ""}</strong>
+              </div>
+
+              <div class="pin-dots-display" id="landing-pin-dots">
+                <span class="pin-dot" id="lp-dot-0"></span>
+                <span class="pin-dot" id="lp-dot-1"></span>
+                <span class="pin-dot" id="lp-dot-2"></span>
+                <span class="pin-dot" id="lp-dot-3"></span>
+              </div>
+
+              <!-- Error -->
+              <div class="login-error-box" id="landing-error-box" style="display:none;">
+                <span>⚠️</span> <span id="landing-error-msg">PIN salah.</span>
+              </div>
+
+              <!-- Virtual Numpad -->
+              <div class="virtual-keypad" id="landing-keypad">
+                <button type="button" class="keypad-key" data-digit="1">1</button>
+                <button type="button" class="keypad-key" data-digit="2">2</button>
+                <button type="button" class="keypad-key" data-digit="3">3</button>
+                <button type="button" class="keypad-key" data-digit="4">4</button>
+                <button type="button" class="keypad-key" data-digit="5">5</button>
+                <button type="button" class="keypad-key" data-digit="6">6</button>
+                <button type="button" class="keypad-key" data-digit="7">7</button>
+                <button type="button" class="keypad-key" data-digit="8">8</button>
+                <button type="button" class="keypad-key" data-digit="9">9</button>
+                <button type="button" class="keypad-key keypad-action-key" id="lp-btn-clear" title="Bersihkan">C</button>
+                <button type="button" class="keypad-key" data-digit="0">0</button>
+                <button type="button" class="keypad-key keypad-action-key" id="lp-btn-backspace" title="Hapus">⌫</button>
+              </div>
+            </div>
+
+            <!-- Tombol Masuk -->
+            <button type="button" class="btn btn-primary" id="lp-btn-login" style="width:100%; padding:0.85rem; font-size:1rem; justify-content:center; font-weight:700;">
+              <span>🚀</span> Masuk Sekarang
+            </button>
+
+            <!-- Demo PIN Hints -->
+            <div class="demo-pin-hint-box">
+              <div class="demo-hint-title">💡 PIN Default Demo:</div>
+              <div class="demo-hint-chips">
+                <button type="button" class="demo-chip" data-user="usr-admin-1" data-pin="1234">👑 Hj. Asmawati (Owner): <strong>1234</strong></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Attach event listeners for the landing page login
+    attachLandingLoginEvents();
+    return;
   }
-}
 
-// ==========================================
-// A. TAMPILAN PENGANTAR (KURIR MOBILE VIEW)
-// ==========================================
-function renderCourierView(container) {
-  const currentCourier = store.getCurrentUser();
-  const today = getWitaDate();
-  
-  // Filter tugas kurir ini untuk hari ini
-  const myOrdersToday = store.data.orders.filter(o => 
-    o.deliveryDate === today && o.courierId === currentCourier.id
-  );
-
-  const completedOrders = myOrdersToday.filter(o => o.deliveryStatus === "DELIVERED");
-  const pendingOrActiveOrders = myOrdersToday.filter(o => o.deliveryStatus !== "DELIVERED" && o.deliveryStatus !== "CANCELLED");
-
-  // Hitung uang tunai di tangan kurir hari ini
-  const todayPayments = store.data.payments.filter(p => {
-    const pDate = getWitaDate(new Date(p.paymentDate));
-    return pDate === today && p.collectedBy === currentCourier.id && p.paymentMethod === "CASH";
-  });
-  const cashInHand = todayPayments.reduce((sum, p) => sum + p.amount, 0);
-
-  container.innerHTML = `
-    <div class="courier-view-header">
-      <div class="courier-header-top">
-        <div class="courier-avatar-block">
-          <div class="courier-avatar">🛵</div>
-          <div>
-            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">TAMPILAN PENGANTAR (HP)</div>
-            <h2 style="font-size: 1.25rem; font-weight: 800; color: white;">${currentCourier.name}</h2>
-            <div style="font-size: 0.75rem; color: #38bdf8;">Kendaraan: ${currentCourier.vehicle || 'Sepeda Motor'}</div>
-          </div>
-        </div>
-        <div style="text-align: right;">
-          <div style="font-size: 0.75rem; color: #94a3b8;">Tugas Hari Ini</div>
-          <div style="font-family: var(--font-heading); font-size: 1.35rem; font-weight: 800; color: white;">
-            ${completedOrders.length} / ${myOrdersToday.length} <span style="font-size: 0.8rem; font-weight: 500;">Selesai</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="courier-cash-card">
-        <div>
-          <div class="label">💵 Uang Tunai di Tangan (Wajib Disetor):</div>
-          <div class="val">${formatRupiah(cashInHand)}</div>
-        </div>
-        <div style="font-size: 0.75rem; color: #94a3b8; text-align: right;">
-          WITA: ${getWitaDate()}
-        </div>
-      </div>
-    </div>
-
-    <!-- Daftar Tugas Kurir -->
-    <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-      <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-main);">
-        📋 Antrean Pengantaran Hari Ini (${pendingOrActiveOrders.length} Menunggu)
-      </h3>
-    </div>
-
-    ${myOrdersToday.length === 0 ? `
-      <div style="background: white; border-radius: var(--radius-lg); padding: 3rem 1.5rem; text-align: center; border: 1px dashed var(--border-light);">
-        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🎉</div>
-        <div style="font-weight: 700; font-size: 1.1rem;">Belum ada tugas pengantaran!</div>
-        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">
-          Admin belum menugaskan pesanan untuk Anda hari ini (${today}).
-        </p>
-      </div>
-    ` : `
-      <div class="courier-deck">
-        ${myOrdersToday.map(order => renderCourierTaskCard(order)).join("")}
-      </div>
-    `}
-  `;
-
-  // Attach event listeners untuk aksi tombol kurir
-  attachCourierActionListeners();
-}
-
-function renderCourierTaskCard(order) {
-  const isDelivered = order.deliveryStatus === "DELIVERED";
-  const isCancelled = order.deliveryStatus === "CANCELLED";
-
-  const waMessage = `Halo Kak ${order.customerName}, saya ${order.courierName} dari Depot Air Asalynn mau konfirmasi pengantaran galon ke lokasi Kakak sekarang ya.`;
-  const waUrl = formatWaLink(order.customerPhone, waMessage);
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.customerAddress)}`;
-
-  return `
-    <div class="courier-task-card ${order.deliveryStatus === 'ON_DELIVERY' ? 'active-delivery' : ''} ${isDelivered ? 'delivered' : ''}">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
-        <div>
-          <span class="order-code">${order.id}</span>
-          <span style="font-size: 0.8rem; color: var(--primary-700); font-weight: 600; margin-left: 0.4rem;">
-            ⏰ ${order.deliveryTimeSlot || 'Bebas'}
-          </span>
-        </div>
-        <div>
-          <span class="badge badge-${order.deliveryStatus}">
-            <span class="badge-dot"></span>
-            ${order.deliveryStatus === 'DELIVERED' ? 'SELESAI' : order.deliveryStatus === 'ON_DELIVERY' ? 'DI JALAN' : order.deliveryStatus === 'ASSIGNED' ? 'DITUGASKAN' : order.deliveryStatus}
-          </span>
-          <span class="badge badge-pay-${order.paymentStatus}" style="margin-left: 0.25rem;">
-            ${order.paymentStatus === 'PAID' ? 'LUNAS' : order.paymentStatus === 'PARTIAL' ? 'SEBAGIAN' : 'BON/TEMPO'}
-          </span>
-        </div>
-      </div>
-
-      <div>
-        <h4 style="font-size: 1.15rem; font-weight: 800; color: var(--text-main); margin-bottom: 0.25rem;">
-          ${order.customerName}
-        </h4>
-        <div style="font-size: 0.875rem; color: var(--text-muted); display: flex; align-items: flex-start; gap: 0.35rem;">
-          <span>📍</span>
-          <span>${order.customerAddress}</span>
-        </div>
-        ${order.addressNotes ? `
-          <div class="cust-address-note" style="margin-top: 0.4rem;">
-            📌 <strong>Patokan:</strong> ${order.addressNotes}
-          </div>
-        ` : ''}
-      </div>
-
-      <!-- Item Pesanan -->
-      <div class="order-items-box">
-        <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Muatan Kirim:</div>
-        ${order.items.map(it => `
-          <div class="item-row">
-            <span class="item-name">${it.productName}</span>
-            <span class="item-qty-tag">${it.qtyDelivered || it.qtyOrdered}x</span>
-          </div>
-        `).join("")}
-        <div style="font-size: 0.8rem; color: var(--primary-700); font-weight: 600; border-top: 1px dashed var(--border-light); padding-top: 0.3rem; margin-top: 0.2rem;">
-          🔄 Galon Kosong Harus Ditarik: <strong>${order.emptyGallonsExpected || 0} buah</strong>
-        </div>
-      </div>
-
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 0.85rem; color: var(--text-muted);">Total Tagihan:</span>
-        <strong style="font-family: var(--font-heading); font-size: 1.25rem; color: var(--primary-900);">
-          ${formatRupiah(order.subtotalActual || order.subtotalOrdered)}
-        </strong>
-      </div>
-
-      <!-- Tombol Aksi Lapangan -->
-      ${!isDelivered && !isCancelled ? `
-        <div class="courier-action-row">
-          <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-action-maps">
-            <span>📍</span> Buka Maps
-          </a>
-          <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-action-wa">
-            <span>💬</span> Chat WA
-          </a>
-        </div>
-
-        <button type="button" class="btn-complete-delivery btn-open-delivery-modal" data-order-id="${order.id}">
-          <span>✍️</span> Update Kiriman & Terima Uang
-        </button>
-      ` : isDelivered ? `
-        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.85rem; color: #166534; display: flex; justify-content: space-between; align-items: center;">
-          <span>✅ Selesai diantar (${order.emptyGallonsReturned} galon kosong ditarik)</span>
-          <span style="font-weight: 700;">Uang Diterima: ${formatRupiah(order.totalPaid)}</span>
-        </div>
-      ` : `
-        <div style="background: #fff1f2; border: 1px solid #fecdd3; padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.85rem; color: #9f1239;">
-          ❌ Dibatalkan: ${order.cancellationReason || '-'}
-        </div>
-      `}
-    </div>
-  `;
-}
-
-function attachCourierActionListeners() {
-  document.querySelectorAll(".btn-open-delivery-modal").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const orderId = btn.getAttribute("data-order-id");
-      prepareDeliveryModal(orderId);
-    });
-  });
+  // Dashboard Admin Selalu Aktif
+  if (adminTabs) adminTabs.style.display = "flex";
+  switch (activeTab) {
+    case "orders":
+      renderOrdersTab(content);
+      break;
+    case "customers":
+      renderCustomersTab(content);
+      break;
+    case "products":
+      renderProductsTab(content);
+      break;
+    case "reconciliation":
+      renderReconciliationTab(content);
+      break;
+    default:
+      renderOrdersTab(content);
+  }
 }
 
 // Persiapan Modal Selesaikan Pengantaran
@@ -369,25 +722,36 @@ function prepareDeliveryModal(orderId) {
   const order = store.getOrderById(orderId);
   if (!order) return;
 
+  const isReEdit = order.deliveryStatus === "DELIVERED";
+
   currentDeliveryOrder = order;
   currentDeliveryItemQty = {};
   order.items.forEach(it => {
     currentDeliveryItemQty[it.productId] = it.qtyDelivered || it.qtyOrdered;
   });
-  currentEmptyReturned = order.emptyGallonsExpected || 0;
+  // Jika order sudah selesai (edit mode), prefill galon kosong yg sudah tercatat
+  currentEmptyReturned = isReEdit
+    ? (order.emptyGallonsReturned || 0)
+    : (order.emptyGallonsExpected || 0);
 
   document.getElementById("delivery-order-id-input").value = order.id;
-  document.getElementById("modal-delivery-order-id").textContent = order.id;
+  document.getElementById("modal-delivery-order-id").textContent = order.id + (isReEdit ? " (Edit Realisasi)" : "");
   document.getElementById("delivery-cust-name").textContent = order.customerName;
   document.getElementById("delivery-cust-address").textContent = order.customerAddress;
 
   renderDeliveryModalItems();
   updateDeliveryCalculations();
 
-  // Reset preset
-  document.getElementById("preset-pas").classList.add("active");
-  document.getElementById("preset-bon").classList.remove("active");
-  document.getElementById("delivery-payment-method").value = "CASH";
+  // Jika edit mode, prefill jumlah pembayaran yg sudah tercatat
+  if (isReEdit) {
+    document.getElementById("delivery-amount-paid").value = order.totalPaid || 0;
+    document.getElementById("preset-pas").classList.remove("active");
+    document.getElementById("preset-bon").classList.remove("active");
+  } else {
+    document.getElementById("preset-pas").classList.add("active");
+    document.getElementById("preset-bon").classList.remove("active");
+  }
+  document.getElementById("delivery-payment-method").value = order.paymentMethod || "CASH";
   document.getElementById("delivery-driver-notes").value = order.driverNotes || "";
 
   openModal("modal-complete-delivery");
@@ -493,6 +857,9 @@ function renderOrdersTab(container) {
 
     // Filter Status
     if (orderFilterStatus !== "ALL" && o.deliveryStatus !== orderFilterStatus) return false;
+
+    // Sembunyikan pesanan dibatalkan dari tampilan "Semua Status" (ALL) agar UI tidak berantakan
+    if (orderFilterStatus === "ALL" && o.deliveryStatus === "CANCELLED") return false;
 
     // Filter Courier
     if (orderFilterCourier !== "ALL" && o.courierId !== orderFilterCourier) return false;
@@ -673,7 +1040,7 @@ function renderAdminOrderCard(order) {
         `).join("")}
         <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); border-top: 1px dashed var(--border-light); padding-top: 0.3rem;">
           <span>Galon Kosong Ditarik: <strong>${order.emptyGallonsReturned || 0} / ${order.emptyGallonsExpected || 0} galon</strong></span>
-          ${isCancelled ? `<span style="color: #e11d48; font-weight: 700;">Alasan Batal: ${order.cancellationReason}</span>` : ''}
+          ${isCancelled ? `<span style="color: #e11d48; font-weight: 700; background: #fff1f2; padding: 2px 8px; border-radius: 4px; border: 1px solid #fecdd3;">❌ Status: Dibatalkan (Oke)</span>` : ''}
         </div>
       </div>
 
@@ -692,10 +1059,20 @@ function renderAdminOrderCard(order) {
           `}
         </div>
 
-        <div style="display: flex; gap: 0.5rem;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
           ${isAssigned ? `
             <button type="button" class="btn btn-sm btn-secondary btn-set-ondelivery" data-order-id="${order.id}" title="Tandai kurir sudah berangkat">
               🛵 Berangkatkan
+            </button>
+          ` : ''}
+          ${(isAssigned || order.deliveryStatus === "ON_DELIVERY") ? `
+            <button type="button" class="btn btn-sm btn-emerald btn-open-delivery-modal" data-order-id="${order.id}" title="Selesaikan pengantaran & catat realisasi">
+              ✅ Selesaikan
+            </button>
+          ` : ''}
+          ${isDelivered ? `
+            <button type="button" class="btn btn-sm btn-secondary btn-open-delivery-modal" data-order-id="${order.id}" title="Edit atau koreksi realisasi pengantaran">
+              ✏️ Edit Realisasi
             </button>
           ` : ''}
           ${!isDelivered && !isCancelled ? `
@@ -770,12 +1147,24 @@ function attachAdminOrdersListeners() {
     });
   });
 
-  // Buka Modal Batal
+  // Buka Modal Selesaikan Pengantaran (dari Dashboard Admin)
+  document.querySelectorAll(".btn-open-delivery-modal").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const orderId = btn.getAttribute("data-order-id");
+      prepareDeliveryModal(orderId);
+    });
+  });
+
+  // Buka Modal Batal (Konfirmasi Ya / Oke)
   document.querySelectorAll(".btn-open-cancel-order").forEach(btn => {
     btn.addEventListener("click", () => {
       const orderId = btn.getAttribute("data-order-id");
+      const order = store.getOrderById(orderId);
       document.getElementById("cancel-order-id").value = orderId;
-      document.getElementById("cancel-reason-input").value = "";
+      const idLabel = document.getElementById("cancel-order-id-label");
+      const custLabel = document.getElementById("cancel-order-customer-label");
+      if (idLabel) idLabel.textContent = `Nomor Pesanan: ${orderId}`;
+      if (custLabel && order) custLabel.textContent = `Pelanggan: ${order.customerName} (${order.customerPhone})`;
       openModal("modal-cancel-order");
     });
   });
@@ -904,6 +1293,9 @@ function renderCustomersTab(container) {
                   <button type="button" class="btn btn-sm btn-secondary btn-edit-cust" data-cust-id="${cust.id}" title="Edit Data">
                     ✏️ Edit
                   </button>
+                  <button type="button" class="btn btn-sm btn-rose btn-delete-cust" data-cust-id="${cust.id}" title="Hapus Data Pelanggan">
+                    🗑️ Hapus
+                  </button>
                 </div>
               </td>
             </tr>
@@ -982,6 +1374,31 @@ function attachCustomerActionListeners() {
     btn.addEventListener("click", () => {
       const custId = btn.getAttribute("data-cust-id");
       prepareCreateOrderModal(custId);
+    });
+  });
+
+  // Hapus Data Pelanggan (Syarat: Tidak sedang menyimpan galon)
+  document.querySelectorAll(".btn-delete-cust").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const custId = btn.getAttribute("data-cust-id");
+      const cust = store.getCustomerById(custId);
+      if (!cust) return;
+
+      const gallonBal = Number(cust.currentGallonBalance) || 0;
+      if (gallonBal > 0) {
+        showToast(`Gagal: '${cust.name}' tidak dapat dihapus karena masih menyimpan ${gallonBal} galon depot!`, "error");
+        alert(`❌ Tidak dapat menghapus pelanggan '${cust.name}'!\n\nPelanggan ini masih terdata menyimpan/meminjam ${gallonBal} galon depot. Pastikan galon fisik sudah dikembalikan ke depot terlebih dahulu.`);
+        return;
+      }
+
+      if (confirm(`Apakah Anda yakin ingin menghapus data pelanggan '${cust.name}'?`)) {
+        const res = store.deleteCustomer(custId);
+        if (res.success) {
+          showToast(res.message, "success");
+        } else {
+          showToast(res.message, "error");
+        }
+      }
     });
   });
 }
@@ -1329,11 +1746,7 @@ function renderReconciliationTab(container) {
   });
 
   document.getElementById("btn-reset-data").addEventListener("click", () => {
-    if (confirm("Apakah Anda yakin ingin mereset seluruh data kembali ke data sampel awal?")) {
-      store.resetToDefault();
-      showToast("Data berhasil direset ke sampel default!", "info");
-      renderApp();
-    }
+    openModal("modal-confirm-global-reset");
   });
 }
 
@@ -1535,7 +1948,7 @@ function initFormHandlers() {
     renderApp();
   });
 
-  // 2. Submit Form Selesaikan Pengantaran (Kurir)
+  // 2. Submit Form Selesaikan Pengantaran (Admin Dashboard)
   const formCompleteDelivery = document.getElementById("form-complete-delivery");
   formCompleteDelivery.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1554,7 +1967,7 @@ function initFormHandlers() {
     });
 
     closeModal("modal-complete-delivery");
-    showToast(`Pengantaran pesanan ${orderId} selesai dicatat!`, "success");
+    showToast(`✅ Pengantaran pesanan ${orderId} berhasil diselesaikan & dicatat!`, "success");
     renderApp();
   });
 
@@ -1623,16 +2036,15 @@ function initFormHandlers() {
     renderApp();
   });
 
-  // 6. Submit Form Batalkan Pesanan
+  // 6. Submit Form Batalkan Pesanan (Konfirmasi Ya / Oke)
   const formCancelOrder = document.getElementById("form-cancel-order");
   formCancelOrder.addEventListener("submit", (e) => {
     e.preventDefault();
     const orderId = document.getElementById("cancel-order-id").value;
-    const reason = document.getElementById("cancel-reason-input").value;
 
-    store.cancelOrder(orderId, reason);
+    store.cancelOrder(orderId, "Dibatalkan oleh pengguna (Ya/Oke)");
     closeModal("modal-cancel-order");
-    showToast(`Pesanan ${orderId} telah dibatalkan.`, "info");
+    showToast(`Pesanan ${orderId} telah dibatalkan (Oke).`, "info");
     renderApp();
   });
 }

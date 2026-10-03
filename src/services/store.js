@@ -47,6 +47,25 @@ class Store {
         const parsed = JSON.parse(raw);
         // Pastikan struktur lengkap
         if (parsed.orders && parsed.customers && parsed.products) {
+          // Migrasi akun: pastikan field pin tersedia
+          if (parsed.users) {
+            parsed.users.forEach(u => {
+              if (!u.pin) {
+                if (u.id === "usr-admin-1") u.pin = "1234";
+                else if (u.id === "usr-courier-1") u.pin = "1111";
+                else if (u.id === "usr-courier-2") u.pin = "2222";
+                else u.pin = "1234";
+              }
+            });
+          }
+          // Pastikan pengguna selalu masuk ke Landing Page Menu Login jika belum ada sesi aktif
+          if (!sessionStorage.getItem("asalynn_session_active")) {
+            parsed.currentUserId = null;
+            parsed.currentRole = null;
+          } else if (parsed.currentRole === "courier") {
+            // Mode kurir dihapus — migrasi sesi lama ke admin
+            parsed.currentRole = "admin";
+          }
           return parsed;
         }
       } catch (e) {
@@ -54,45 +73,22 @@ class Store {
       }
     }
 
-    // Default state jika baru pertama kali dibuka
-    const defaultData = {
+    // Default state jika baru pertama kali dibuka (Kosongkan data untuk mulai fresh)
+    const zeroData = {
       users: INITIAL_DATA.users,
       products: INITIAL_DATA.products,
-      customers: INITIAL_DATA.customers,
-      orders: INITIAL_DATA.getInitialOrders(today),
-      payments: [
-        {
-          id: "pay-init-01",
-          orderId: "ORD-20261004-001",
-          customerId: "cust-1",
-          customerName: "Warung Coto Daeng Tata",
-          amount: 24000,
-          paymentMethod: "CASH",
-          collectedBy: "usr-courier-1",
-          collectedByName: "Daeng Rahmat",
-          paymentDate: `${today}T09:15:00+08:00`,
-          notes: "Pembayaran lunas tunai di tempat"
-        }
-      ],
-      gallonLogs: [
-        {
-          id: "gln-init-01",
-          orderId: "ORD-20261004-001",
-          customerId: "cust-1",
-          customerName: "Warung Coto Daeng Tata",
-          gallonsOut: 4,
-          gallonsIn: 4,
-          balanceAfter: 6,
-          loggedAt: `${today}T09:15:00+08:00`
-        }
-      ],
-      currentRole: "admin", // 'admin' atau 'courier'
-      activeCourierId: "usr-courier-1", // Kurir aktif yang sedang login di HP
+      customers: [],
+      orders: [],
+      payments: [],
+      gallonLogs: [],
+      currentRole: null, // null = landing page login
+      activeCourierId: null,
+      currentUserId: null, // null = landing page login
       lastUpdated: new Date().toISOString()
     };
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultData));
-    return defaultData;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(zeroData));
+    return zeroData;
   }
 
   save() {
@@ -112,22 +108,66 @@ class Store {
     this.listeners.forEach(fn => fn(this.data));
   }
 
-  // === ROLE & USER STATE ===
+  // === ROLE & USER AUTHENTICATION STATE ===
+  isLoggedIn() {
+    return !!this.data.currentUserId;
+  }
+
+  getCurrentUser() {
+    if (!this.data.currentUserId) return null;
+    return this.data.users.find(u => u.id === this.data.currentUserId) || null;
+  }
+
   setCurrentRole(role) {
     this.data.currentRole = role;
+    if (role === "admin") {
+      const admin = this.data.users.find(u => u.role === "admin");
+      if (admin) this.data.currentUserId = admin.id;
+    } else {
+      const courier = this.data.users.find(u => u.id === this.data.activeCourierId) || this.data.users.find(u => u.role === "courier");
+      if (courier) {
+        this.data.currentUserId = courier.id;
+        this.data.activeCourierId = courier.id;
+      }
+    }
+    sessionStorage.setItem("asalynn_session_active", "true");
     this.save();
   }
 
   setActiveCourier(courierId) {
     this.data.activeCourierId = courierId;
+    this.data.currentUserId = courierId;
+    this.data.currentRole = "courier";
+    sessionStorage.setItem("asalynn_session_active", "true");
     this.save();
   }
 
-  getCurrentUser() {
-    if (this.data.currentRole === "admin") {
-      return this.data.users.find(u => u.role === "admin") || this.data.users[0];
+  login(userId, pin) {
+    const user = this.data.users.find(u => u.id === userId);
+    if (!user) {
+      return { success: false, message: "Akun pengguna tidak ditemukan." };
     }
-    return this.data.users.find(u => u.id === this.data.activeCourierId) || this.data.users[1];
+    const correctPin = user.pin || (user.id === "usr-admin-1" ? "1234" : user.id === "usr-courier-1" ? "1111" : "2222");
+    if (user.pin !== pin && correctPin !== pin) {
+      return { success: false, message: "PIN yang Anda masukkan salah. Silakan coba lagi." };
+    }
+
+    this.data.currentUserId = user.id;
+    // Mode Kurir dihapus — semua akun selalu masuk ke Dashboard Admin
+    this.data.currentRole = "admin";
+    if (user.role === "courier") {
+      this.data.activeCourierId = user.id;
+    }
+    sessionStorage.setItem("asalynn_session_active", "true");
+    this.save();
+    return { success: true, user };
+  }
+
+  logout() {
+    this.data.currentUserId = null;
+    this.data.currentRole = null;
+    sessionStorage.removeItem("asalynn_session_active");
+    this.save();
   }
 
   // === CUSTOMER MANAGEMENT ===
@@ -162,6 +202,25 @@ class Store {
     Object.assign(customer, fields);
     this.save();
     return customer;
+  }
+
+  deleteCustomer(id) {
+    const customer = this.getCustomerById(id);
+    if (!customer) return { success: false, message: "Pelanggan tidak ditemukan." };
+
+    if ((customer.currentGallonBalance || 0) > 0) {
+      return {
+        success: false,
+        message: `Pelanggan '${customer.name}' tidak dapat dihapus karena masih terdata menyimpan ${customer.currentGallonBalance} galon depot.`
+      };
+    }
+
+    const index = this.data.customers.findIndex(c => c.id === id);
+    if (index !== -1) {
+      this.data.customers.splice(index, 1);
+      this.save();
+    }
+    return { success: true, message: `Data pelanggan '${customer.name}' berhasil dihapus.` };
   }
 
   setCustomerCustomPrice(customerId, productId, customPrice) {
@@ -320,7 +379,7 @@ class Store {
     this.save();
   }
 
-  // === PENGANTAR: SELESAIKAN PENGANTARAN & CATAT REALISASI LAPANGAN ===
+  // === PENYELESAIAN PENGANTARAN DI DASHBOARD ADMIN ===
   completeDelivery({
     orderId,
     qtyDeliveredMap = {}, // { [productId]: qtyActual }
@@ -333,7 +392,29 @@ class Store {
     if (!order) throw new Error("Pesanan tidak ditemukan");
 
     const customer = this.getCustomerById(order.customerId);
-    const courier = this.getCurrentUser();
+    const currentUser = this.getCurrentUser();
+
+    // Jika pesanan sebelumnya sudah berstatus DELIVERED (mode edit/koreksi realisasi),
+    // kembalikan mutasi saldo hutang & galon sebelumnya agar tidak terjadi double counting
+    const wasAlreadyDelivered = order.deliveryStatus === "DELIVERED";
+    if (wasAlreadyDelivered && customer) {
+      const prevUnpaidDiff = Math.max(0, (order.subtotalActual || 0) - (order.totalPaid || 0));
+      if (prevUnpaidDiff > 0) {
+        customer.currentDebtBalance = Math.max(0, (customer.currentDebtBalance || 0) - prevUnpaidDiff);
+      }
+      let prevGallonsDelivered = 0;
+      order.items.forEach(it => {
+        if (it.productId === "prod-refill-19l" || it.productName.toLowerCase().includes("refill")) {
+          prevGallonsDelivered += (it.qtyDelivered || 0);
+        }
+      });
+      const prevGallonNetDelta = prevGallonsDelivered - (Number(order.emptyGallonsReturned) || 0);
+      customer.currentGallonBalance = (customer.currentGallonBalance || 0) - prevGallonNetDelta;
+
+      // Hapus log mutasi dan pembayaran lama dari pesanan ini
+      this.data.payments = this.data.payments.filter(p => p.orderId !== order.id);
+      this.data.gallonLogs = this.data.gallonLogs.filter(g => g.orderId !== order.id);
+    }
 
     // 1. Update jumlah barang terkirim aktual & hitung subtotal aktual
     let recalculatedSubtotal = 0;
@@ -407,8 +488,8 @@ class Store {
         customerName: order.customerName,
         amount: paid,
         paymentMethod: paymentMethod,
-        collectedBy: order.courierId || courier.id,
-        collectedByName: order.courierName || courier.name,
+        collectedBy: order.courierId || (currentUser ? currentUser.id : "usr-admin-1"),
+        collectedByName: order.courierName || (currentUser ? currentUser.name : "Admin Depot"),
         paymentDate: new Date().toISOString(),
         notes: `Pembayaran pesanan ${order.id}`
       };
@@ -521,10 +602,64 @@ class Store {
     };
   }
 
-  // Reset database ke sampel default
+  // Reset database ke 0 (Kosongkan transaksi & pelanggan untuk pengoperasian baru)
+  resetToZero() {
+    this.data = {
+      users: INITIAL_DATA.users,
+      products: INITIAL_DATA.products,
+      customers: [],
+      orders: [],
+      payments: [],
+      gallonLogs: [],
+      currentUserId: this.data.currentUserId || null,
+      currentRole: this.data.currentRole || "admin",
+      activeCourierId: null,
+      lastUpdated: new Date().toISOString()
+    };
+    this.save();
+    this.notify();
+  }
+
+  // Reset database ke sampel data default (data contoh awal)
   resetToDefault() {
-    localStorage.removeItem(STORAGE_KEY);
-    this.data = this.loadFromStorage();
+    const today = getWitaDate();
+    this.data = {
+      users: INITIAL_DATA.users,
+      products: INITIAL_DATA.products,
+      customers: INITIAL_DATA.customers,
+      orders: INITIAL_DATA.getInitialOrders(today),
+      payments: [
+        {
+          id: "pay-init-01",
+          orderId: "ORD-20261004-001",
+          customerId: "cust-1",
+          customerName: "Warung Coto Daeng Tata",
+          amount: 24000,
+          paymentMethod: "CASH",
+          collectedBy: "usr-courier-1",
+          collectedByName: "Daeng Rahmat",
+          paymentDate: `${today}T09:15:00+08:00`,
+          notes: "Pembayaran lunas tunai di tempat"
+        }
+      ],
+      gallonLogs: [
+        {
+          id: "gln-init-01",
+          orderId: "ORD-20261004-001",
+          customerId: "cust-1",
+          customerName: "Warung Coto Daeng Tata",
+          gallonsOut: 4,
+          gallonsIn: 4,
+          balanceAfter: 6,
+          loggedAt: `${today}T09:15:00+08:00`
+        }
+      ],
+      currentUserId: this.data.currentUserId || null,
+      currentRole: this.data.currentRole || "admin",
+      activeCourierId: null,
+      lastUpdated: new Date().toISOString()
+    };
+    this.save();
     this.notify();
   }
 

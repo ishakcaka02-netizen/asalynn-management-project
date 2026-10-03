@@ -31,19 +31,65 @@
         <span id="clock-display">00:00:00 WITA</span>
       </div>
 
-      <!-- Role Switcher (Admin vs Kurir) -->
-      <div class="role-switcher">
-        <button type="button" class="role-btn active" id="btn-role-admin" data-role="admin">
-          <span>👑</span> Admin / Pemilik
-        </button>
-        <button type="button" class="role-btn" id="btn-role-courier" data-role="courier">
-          <span>🛵</span> Kurir Lapangan
-        </button>
-        <div class="courier-select-wrap" id="courier-select-container" style="display: none;">
-          <select id="select-active-courier" title="Pilih Pengantar">
-            <!-- Diisi otomatis dari JS -->
-          </select>
+      <!-- Header Right Actions: User Account Menu & Settings -->
+      <div class="header-right-actions">
+        <!-- Akun Pengguna Aktif & Menu Dropdown -->
+        <div class="user-account-widget" id="user-account-widget">
+          <button type="button" class="account-pill-btn" id="btn-account-menu" title="Menu Akun & Profil Pengguna">
+            <span class="account-avatar" id="header-user-avatar">👑</span>
+            <div class="account-meta">
+              <span class="account-name" id="header-user-name">Hj. Asmawati</span>
+              <span class="account-role-badge" id="header-user-role">Owner</span>
+            </div>
+            <span class="account-chevron">▾</span>
+          </button>
+
+          <!-- Dropdown Menu Akun -->
+          <div class="account-dropdown-menu" id="account-dropdown-menu">
+            <div class="dropdown-header">
+              <div class="dropdown-user-avatar" id="dropdown-user-avatar">👑</div>
+              <div class="dropdown-user-info">
+                <div class="dropdown-user-name" id="dropdown-user-name">Hj. Asmawati (Owner)</div>
+                <div class="dropdown-user-phone" id="dropdown-user-phone">0812-3456-7890</div>
+                <span class="dropdown-user-tag" id="dropdown-user-tag">Pemilik & Admin Depot</span>
+              </div>
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-actions">
+              <button type="button" class="dropdown-item" id="btn-open-login-modal">
+                <span class="item-icon">🔄</span>
+                <div class="item-text">
+                  <strong>Ganti Akun Pengguna</strong>
+                  <small>Masuk sebagai Admin Depot</small>
+                </div>
+              </button>
+              <button type="button" class="dropdown-item" id="btn-open-settings-modal">
+                <span class="item-icon">⚙️</span>
+                <div class="item-text">
+                  <strong>Pengaturan & Reset Global</strong>
+                  <small>Kelola data, cadangan, & reset sistem</small>
+                </div>
+              </button>
+              <button type="button" class="dropdown-item text-danger" id="btn-logout">
+                <span class="item-icon">🚪</span>
+                <div class="item-text">
+                  <strong>Keluar (Logout)</strong>
+                  <small>Kunci sesi operasional aplikasi</small>
+                </div>
+              </button>
+            </div>
+          </div>
         </div>
+
+        <!-- Tombol Cepat Pengaturan & Reset Global -->
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-quick-settings" title="Pengaturan & Reset Global" style="display: none; align-items: center; gap: 0.35rem; font-weight: 600;">
+          <span>⚙️</span> <span class="hide-mobile">Pengaturan</span>
+        </button>
+
+        <!-- Tombol Login Cepat jika belum login -->
+        <button type="button" class="btn btn-primary btn-sm" id="btn-header-login" style="display: none;">
+          <span>🔐</span> Masuk Akun
+        </button>
       </div>
     </div>
   </header>
@@ -164,7 +210,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <div>
-          <h2 class="modal-title">✍️ Catat Realisasi Kiriman</h2>
+          <h2 class="modal-title">✍️ Selesaikan Pengantaran & Catat Realisasi</h2>
           <div id="modal-delivery-order-id" style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">-</div>
         </div>
         <button type="button" class="modal-close-btn" data-close="modal-complete-delivery">&times;</button>
@@ -342,27 +388,126 @@
 
   <!-- MODAL: Batalkan Pesanan -->
   <div class="modal-overlay" id="modal-cancel-order">
-    <div class="modal-card">
+    <div class="modal-card" style="max-width: 440px;">
       <div class="modal-header">
         <h2 class="modal-title">❌ Batalkan Pesanan</h2>
         <button type="button" class="modal-close-btn" data-close="modal-cancel-order">&times;</button>
       </div>
       <form id="form-cancel-order">
         <input type="hidden" id="cancel-order-id">
-        <div class="modal-body">
-          <p style="font-size: 0.85rem; color: var(--text-muted);">
-            Sesuai aturan bisnis, data pesanan yang dibatalkan tidak akan dihapus permanen dari sistem melainkan disimpan sebagai riwayat audit.
+        <div class="modal-body" style="text-align: center; padding: 1.5rem 1rem;">
+          <div style="font-size: 3rem; margin-bottom: 0.75rem; line-height: 1;">⚠️</div>
+          <h3 style="font-size: 1.2rem; font-weight: 800; color: #1e293b; margin-bottom: 0.5rem;">
+            Yakin batalkan pesanan ini?
+          </h3>
+          <p style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.85rem;">
+            Pilih <strong>Ya</strong> atau <strong>Oke</strong> untuk mengonfirmasi pembatalan.
           </p>
-          <div class="form-group">
-            <label class="form-label" for="cancel-reason-input">Alasan Pembatalan *</label>
-            <textarea class="form-control" id="cancel-reason-input" rows="3" required placeholder="Contoh: Pelanggan tidak ada di tempat / pesanan duplikat / ganti jadwal"></textarea>
+          <div id="cancel-order-detail-box" style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: var(--radius-md); padding: 0.85rem; text-align: left; font-size: 0.85rem;">
+            <div style="font-weight: 700; color: #9f1239;" id="cancel-order-id-label">Pesanan: -</div>
+            <div style="color: #881337; margin-top: 0.2rem;" id="cancel-order-customer-label">Pelanggan: -</div>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-close="modal-cancel-order">Kembali</button>
-          <button type="submit" class="btn btn-rose">Konfirmasi Batalkan</button>
+        <div class="modal-footer" style="justify-content: space-between;">
+          <button type="button" class="btn btn-secondary" data-close="modal-cancel-order">Batal (Tidak)</button>
+          <button type="submit" class="btn btn-rose" id="btn-confirm-cancel-order" style="min-width: 150px; font-weight: 700;">
+            <span>✓</span> Ya, Batalkan (Oke)
+          </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Pengaturan & Reset Global -->
+  <div class="modal-overlay" id="modal-global-settings">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <h2 class="modal-title">⚙️ Pengaturan & Reset Global</h2>
+        <button type="button" class="modal-close-btn" data-close="modal-global-settings">&times;</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.15rem;">
+        
+        <!-- Info Operasional -->
+        <div style="background: #f8fafc; border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1rem;">
+          <h4 style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">
+            ℹ️ Status Operasional Sistem
+          </h4>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; font-size: 0.85rem;">
+            <div>Zona Waktu: <strong style="color: var(--primary-700);">WITA (UTC+8)</strong></div>
+            <div>Sesi Aktif: <strong id="settings-current-user">-</strong></div>
+            <div>Total Pesanan: <strong id="settings-count-orders">0</strong></div>
+            <div>Total Pelanggan: <strong id="settings-count-customers">0</strong></div>
+          </div>
+        </div>
+
+        <!-- Cadangan & Pulihkan Data -->
+        <div style="border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1rem;">
+          <h4 style="font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 0.35rem;">
+            💾 Cadangan Data (Backup & Restore)
+          </h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+            Unduh seluruh data transaksi, pelanggan, dan mutasi galon ke file JSON atau pulihkan dari cadangan sebelumnya.
+          </p>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-settings-export">
+              📥 Unduh Cadangan JSON
+            </button>
+            <label class="btn btn-sm btn-outline-secondary" style="margin: 0; cursor: pointer;">
+              📤 Pulihkan Data JSON
+              <input type="file" id="settings-import-file" accept=".json" style="display: none;">
+            </label>
+          </div>
+        </div>
+
+        <!-- Zona Bahaya: Reset Global -->
+        <div style="border: 1px solid #fecdd3; background: #fff1f2; border-radius: var(--radius-md); padding: 1.15rem;">
+          <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+            <div style="font-size: 1.5rem; line-height: 1;">⚠️</div>
+            <div style="flex: 1;">
+              <h4 style="font-size: 0.95rem; font-weight: 800; color: #9f1239; margin-bottom: 0.25rem;">
+                Reset Global Sistem (Factory Reset)
+              </h4>
+              <p style="font-size: 0.82rem; color: #881337; margin-bottom: 0.85rem; line-height: 1.4;">
+                Tindakan ini akan <strong>menghapus seluruh pesanan baru, riwayat kas, dan mutasi galon</strong>, lalu mengembalikan data pelanggan, produk, dan pengguna ke <strong>data awal default operasional</strong>.
+              </p>
+              <button type="button" class="btn btn-rose btn-sm" id="btn-trigger-global-reset" style="font-weight: 700;">
+                🔄 Lakukan Reset Global Sistem
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="modal-global-settings">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL KONFIRMASI RESET GLOBAL -->
+  <div class="modal-overlay" id="modal-confirm-global-reset">
+    <div class="modal-card" style="max-width: 440px; text-align: center;">
+      <div class="modal-header" style="justify-content: center;">
+        <h2 class="modal-title" style="color: #e11d48;">🚨 Konfirmasi Reset Global</h2>
+      </div>
+      <div class="modal-body" style="padding: 1.5rem 1rem;">
+        <div style="font-size: 3rem; margin-bottom: 0.75rem;">💣</div>
+        <h3 style="font-size: 1.2rem; font-weight: 800; color: #1e293b; margin-bottom: 0.5rem;">
+          Yakin ingin mereset seluruh data sistem?
+        </h3>
+        <p style="font-size: 0.95rem; color: #64748b; margin-bottom: 0.5rem;">
+          Pilih <strong>Ya</strong> atau <strong>Oke</strong> untuk mengembalikan seluruh sistem ke kondisi default awal.
+        </p>
+        <p style="font-size: 0.8rem; color: #e11d48; font-weight: 600;">
+          Semua transaksi yang belum dicadangkan akan terhapus permanen.
+        </p>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button type="button" class="btn btn-secondary" data-close="modal-confirm-global-reset">Batal (Tidak)</button>
+        <button type="button" class="btn btn-rose" id="btn-execute-global-reset" style="font-weight: 700; min-width: 150px;">
+          Ya, Reset Global (Oke)
+        </button>
+      </div>
     </div>
   </div>
 
@@ -398,6 +543,80 @@
           <button type="submit" class="btn btn-primary">Simpan Produk</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Menu Login Akun (Sistem Autentikasi Pengguna) -->
+  <div class="modal-overlay" id="modal-login-account">
+    <div class="modal-card login-modal-card">
+      <div class="modal-header login-modal-header">
+        <div class="login-brand-header">
+          <div class="login-brand-icon">💧</div>
+          <div>
+            <h2 class="modal-title" style="font-size: 1.15rem;">Masuk Akun Depot Asalynn</h2>
+            <p class="login-subtitle">Pilih profil akun Anda dan masukkan 4 digit PIN</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" id="btn-close-login-modal" data-close="modal-login-account">&times;</button>
+      </div>
+
+      <div class="modal-body login-modal-body">
+        <!-- 1. Pilihan Profil Akun Cepat -->
+        <div class="form-group">
+          <label class="form-label" style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted);">Pilih Pengguna:</label>
+          <div class="login-profile-selector" id="login-profile-selector">
+            <!-- Di-render oleh JS sesuai daftar akun users -->
+          </div>
+        </div>
+
+        <!-- 2. PIN Display & Indicator Dots -->
+        <div class="login-pin-container">
+          <div class="pin-status-label" id="pin-status-label">
+            Masukkan PIN untuk: <span class="pin-target-name" id="pin-target-name">Hj. Asmawati</span>
+          </div>
+
+          <div class="pin-dots-display" id="pin-dots-display">
+            <span class="pin-dot" id="pindot-0"></span>
+            <span class="pin-dot" id="pindot-1"></span>
+            <span class="pin-dot" id="pindot-2"></span>
+            <span class="pin-dot" id="pindot-3"></span>
+          </div>
+
+          <!-- Alert Pesan Error jika PIN salah -->
+          <div class="login-error-box" id="login-error-box" style="display: none;">
+            <span>⚠️</span> <span id="login-error-msg">PIN salah. Silakan coba lagi.</span>
+          </div>
+
+          <!-- 3. Virtual Keypad Numpad -->
+          <div class="virtual-keypad" id="virtual-keypad">
+            <button type="button" class="keypad-key" data-digit="1">1</button>
+            <button type="button" class="keypad-key" data-digit="2">2</button>
+            <button type="button" class="keypad-key" data-digit="3">3</button>
+            <button type="button" class="keypad-key" data-digit="4">4</button>
+            <button type="button" class="keypad-key" data-digit="5">5</button>
+            <button type="button" class="keypad-key" data-digit="6">6</button>
+            <button type="button" class="keypad-key" data-digit="7">7</button>
+            <button type="button" class="keypad-key" data-digit="8">8</button>
+            <button type="button" class="keypad-key" data-digit="9">9</button>
+            <button type="button" class="keypad-key keypad-action-key" id="btn-keypad-clear" title="Bersihkan">C</button>
+            <button type="button" class="keypad-key" data-digit="0">0</button>
+            <button type="button" class="keypad-key keypad-action-key" id="btn-keypad-backspace" title="Hapus Satu Digit">⌫</button>
+          </div>
+        </div>
+
+        <!-- 4. Tombol Masuk -->
+        <button type="button" class="btn btn-primary" id="btn-do-login" style="width: 100%; padding: 0.85rem; font-size: 1rem; justify-content: center; font-weight: 700;">
+          <span>🚀</span> Masuk Sekarang
+        </button>
+
+        <!-- 5. Petunjuk Kredensial Demo Bawaan -->
+        <div class="demo-pin-hint-box">
+          <div class="demo-hint-title">💡 PIN Default Demo Admin:</div>
+          <div class="demo-hint-chips">
+            <button type="button" class="demo-chip" data-user="usr-admin-1" data-pin="1234">👑 Hj. Asmawati (Owner/Admin): <strong>1234</strong></button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

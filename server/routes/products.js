@@ -6,12 +6,7 @@ const router = Router();
 // GET /api/products - Ambil katalog produk
 router.get("/", (req, res) => {
   const { active } = req.query;
-  let products = db.data.products;
-
-  if (active !== undefined) {
-    const isActive = active === "true";
-    products = products.filter(p => !!p.isActive === isActive);
-  }
+  const products = db.getProducts({ active });
 
   res.json({
     success: true,
@@ -21,7 +16,7 @@ router.get("/", (req, res) => {
 
 // GET /api/products/:id - Ambil detail produk
 router.get("/:id", (req, res) => {
-  const product = db.data.products.find(p => p.id === req.params.id);
+  const product = db.getProductById(req.params.id);
   if (!product) {
     return res.status(404).json({ success: false, message: "Produk tidak ditemukan." });
   }
@@ -47,7 +42,7 @@ router.post("/", (req, res) => {
 
   const generatedCode = code ? code.trim() : "PRD-" + Math.floor(100 + Math.random() * 900);
 
-  const newProduct = {
+  const newProduct = db.createProduct({
     id: `prod-${Date.now()}`,
     name: name.trim(),
     code: generatedCode,
@@ -55,10 +50,7 @@ router.post("/", (req, res) => {
     unit: unit.trim() || "Galon",
     description: description.trim(),
     isActive: true
-  };
-
-  db.data.products.push(newProduct);
-  db.persist();
+  });
 
   res.status(201).json({
     success: true,
@@ -69,37 +61,28 @@ router.post("/", (req, res) => {
 
 // PUT /api/products/:id - Perbarui produk
 router.put("/:id", (req, res) => {
-  const product = db.data.products.find(p => p.id === req.params.id);
+  const product = db.getProductById(req.params.id);
   if (!product) {
     return res.status(404).json({ success: false, message: "Produk tidak ditemukan." });
   }
 
-  const { name, standardPrice, unit, description, code, isActive } = req.body;
-  if (name !== undefined) product.name = name.trim();
-  if (code !== undefined) product.code = code.trim();
-  if (standardPrice !== undefined) product.standardPrice = Number(standardPrice) || 0;
-  if (unit !== undefined) product.unit = unit.trim();
-  if (description !== undefined) product.description = description.trim();
-  if (isActive !== undefined) product.isActive = Boolean(isActive);
-
-  db.persist();
+  const updatedProduct = db.updateProduct(req.params.id, req.body);
 
   res.json({
     success: true,
     message: "Data produk berhasil diperbarui.",
-    data: product
+    data: updatedProduct
   });
 });
 
 // DELETE /api/products/:id - Nonaktifkan produk
 router.delete("/:id", (req, res) => {
-  const product = db.data.products.find(p => p.id === req.params.id);
+  const product = db.getProductById(req.params.id);
   if (!product) {
     return res.status(404).json({ success: false, message: "Produk tidak ditemukan." });
   }
 
-  product.isActive = false;
-  db.persist();
+  db.updateProduct(req.params.id, { isActive: false });
 
   res.json({
     success: true,

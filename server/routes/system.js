@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "../db.js";
+import { db, seedDatabase } from "../db.js";
 
 const router = Router();
 
@@ -53,17 +53,43 @@ router.post("/import", (req, res) => {
     });
   }
 
-  db.data = incoming;
-  db.persist();
+  // Clear & Re-seed with incoming data
+  seedDatabase(true); // reset to 0 first
+
+  if (Array.isArray(incoming.users)) {
+    incoming.users.forEach(u => db.createUser(u));
+  }
+  if (Array.isArray(incoming.products)) {
+    incoming.products.forEach(p => db.createProduct(p));
+  }
+  if (Array.isArray(incoming.customers)) {
+    incoming.customers.forEach(c => {
+      db.createCustomer(c);
+      if (c.customPrices) {
+        Object.entries(c.customPrices).forEach(([pId, price]) => {
+          db.setCustomPrice(c.id, pId, price);
+        });
+      }
+    });
+  }
+  if (Array.isArray(incoming.orders)) {
+    incoming.orders.forEach(o => db.createOrder(o));
+  }
+  if (Array.isArray(incoming.payments)) {
+    incoming.payments.forEach(p => db.createPayment(p));
+  }
+  if (Array.isArray(incoming.gallonLogs)) {
+    incoming.gallonLogs.forEach(g => db.createGallonLog(g));
+  }
 
   res.json({
     success: true,
     message: "Database berhasil diimpor dan diperbarui.",
     summary: {
-      users: db.data.users.length,
-      customers: db.data.customers.length,
-      products: db.data.products.length,
-      orders: db.data.orders.length
+      users: db.getUsers().length,
+      customers: db.getCustomers().length,
+      products: db.getProducts().length,
+      orders: db.getOrders().length
     }
   });
 });

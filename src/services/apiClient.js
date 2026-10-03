@@ -136,6 +136,11 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(orderData)
     }),
+    update: (id, orderData) => this.request(`/orders/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(orderData)
+    }),
+    delete: (id) => this.request(`/orders/${id}`, { method: "DELETE" }),
     assignCourier: (orderId, courierId) => this.request(`/orders/${orderId}/assign`, {
       method: "PATCH",
       body: JSON.stringify({ courierId })
@@ -160,10 +165,12 @@ class ApiClient {
       const query = new URLSearchParams(params).toString();
       return this.request(`/payments${query ? `?${query}` : ""}`);
     },
+    getById: (id) => this.request(`/payments/${id}`),
     create: (paymentData) => this.request("/payments", {
       method: "POST",
       body: JSON.stringify(paymentData)
-    })
+    }),
+    delete: (id) => this.request(`/payments/${id}`, { method: "DELETE" })
   };
 
   // === GALLON LOGS ===
@@ -172,10 +179,12 @@ class ApiClient {
       const query = new URLSearchParams(params).toString();
       return this.request(`/gallons/logs${query ? `?${query}` : ""}`);
     },
+    getLogById: (id) => this.request(`/gallons/logs/${id}`),
     adjust: (adjustmentData) => this.request("/gallons/adjust", {
       method: "POST",
       body: JSON.stringify(adjustmentData)
-    })
+    }),
+    deleteLog: (id) => this.request(`/gallons/logs/${id}`, { method: "DELETE" })
   };
 
   // === REPORTS ===

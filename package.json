@@ -13,10 +13,13 @@
     "push": "git add . && git commit -m \"update project\" && git push origin main"
   },
   "devDependencies": {
+    "drizzle-kit": "^0.31.11",
     "vite": "^8.3.2"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
+    "drizzle-orm": "^0.45.3",
     "express": "^5.2.1"
   }
 }

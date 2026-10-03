@@ -1,36 +1,30 @@
 import { Router } from "express";
-import { db, getWitaDate } from "../db.js";
+import { db } from "../db.js";
 
 const router = Router();
 
 // GET /api/payments - Daftar pembayaran masuk
 router.get("/", (req, res) => {
   const { date, orderId, customerId, collectedBy, method } = req.query;
-  let payments = db.data.payments;
-
-  if (date) {
-    payments = payments.filter(p => {
-      const pDate = getWitaDate(new Date(p.paymentDate));
-      return pDate === date;
-    });
-  }
-  if (orderId) {
-    payments = payments.filter(p => p.orderId === orderId);
-  }
-  if (customerId) {
-    payments = payments.filter(p => p.customerId === customerId);
-  }
-  if (collectedBy) {
-    payments = payments.filter(p => p.collectedBy === collectedBy);
-  }
-  if (method) {
-    payments = payments.filter(p => p.paymentMethod === method.toUpperCase());
-  }
+  const payments = db.getPayments({ date, orderId, customerId, collectedBy, method });
 
   res.json({
     success: true,
     total: payments.length,
     data: payments
+  });
+});
+
+// GET /api/payments/:id - Detail pembayaran
+router.get("/:id", (req, res) => {
+  const payment = db.getPaymentById(req.params.id);
+  if (!payment) {
+    return res.status(404).json({ success: false, message: "Catatan pembayaran tidak ditemukan." });
+  }
+
+  res.json({
+    success: true,
+    data: payment
   });
 });
 
@@ -52,15 +46,15 @@ router.post("/", (req, res) => {
 
   let customer = null;
   if (customerId) {
-    customer = db.data.customers.find(c => c.id === customerId);
+    customer = db.getCustomerById(customerId);
   }
 
-  const collector = (collectedBy && db.data.users.find(u => u.id === collectedBy)) || req.user || {
+  const collector = (collectedBy && db.getUserById(collectedBy)) || req.user || {
     id: "usr-admin-1",
     name: "Hj. Asmawati (Owner)"
   };
 
-  const newPayment = {
+  const newPayment = db.createPayment({
     id: `pay-${Date.now()}`,
     orderId: orderId || null,
     customerId: customer ? customer.id : customerId || null,
@@ -71,15 +65,27 @@ router.post("/", (req, res) => {
     collectedByName: collector.name,
     paymentDate: new Date().toISOString(),
     notes: notes.trim()
-  };
-
-  db.data.payments.unshift(newPayment);
-  db.persist();
+  });
 
   res.status(201).json({
     success: true,
     message: "Pembayaran berhasil dicatat.",
     data: newPayment
+  });
+});
+
+// DELETE /api/payments/:id - Hapus/batalkan catatan pembayaran
+router.delete("/:id", (req, res) => {
+  const payment = db.getPaymentById(req.params.id);
+  if (!payment) {
+    return res.status(404).json({ success: false, message: "Catatan pembayaran tidak ditemukan." });
+  }
+
+  db.deletePayment(req.params.id);
+
+  res.json({
+    success: true,
+    message: `Catatan pembayaran '${payment.id}' berhasil dihapus.`
   });
 });
 

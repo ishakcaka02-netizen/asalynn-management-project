@@ -6,16 +6,7 @@ const router = Router();
 // GET /api/customers - Daftar pelanggan (dukungan pencarian ?q=)
 router.get("/", (req, res) => {
   const { q } = req.query;
-  let customers = db.data.customers;
-
-  if (q && q.trim()) {
-    const term = q.trim().toLowerCase();
-    customers = customers.filter(c =>
-      c.name.toLowerCase().includes(term) ||
-      c.phone.includes(term) ||
-      c.address.toLowerCase().includes(term)
-    );
-  }
+  const customers = db.getCustomers({ q });
 
   res.json({
     success: true,
@@ -26,14 +17,13 @@ router.get("/", (req, res) => {
 
 // GET /api/customers/:id - Detail pelanggan
 router.get("/:id", (req, res) => {
-  const customer = db.data.customers.find(c => c.id === req.params.id);
+  const customer = db.getCustomerById(req.params.id);
   if (!customer) {
     return res.status(404).json({ success: false, message: "Pelanggan tidak ditemukan." });
   }
 
-  // Tampilkan juga harga efektif dengan nama produk
   const customPricesDetails = Object.entries(customer.customPrices || {}).map(([prodId, price]) => {
-    const prod = db.data.products.find(p => p.id === prodId);
+    const prod = db.getProductById(prodId);
     return {
       productId: prodId,
       productName: prod ? prod.name : prodId,
@@ -65,7 +55,7 @@ router.post("/", (req, res) => {
     return res.status(400).json({ success: false, message: "Alamat pengantaran wajib diisi." });
   }
 
-  const newCustomer = {
+  const newCustomer = db.createCustomer({
     id: `cust-${Date.now()}`,
     name: name.trim(),
     phone: phone.trim(),
@@ -73,12 +63,8 @@ router.post("/", (req, res) => {
     addressNotes: addressNotes.trim(),
     currentGallonBalance: 0,
     currentDebtBalance: 0,
-    customPrices: {},
     createdAt: getWitaDate()
-  };
-
-  db.data.customers.push(newCustomer);
-  db.persist();
+  });
 
   res.status(201).json({
     success: true,
@@ -89,36 +75,27 @@ router.post("/", (req, res) => {
 
 // PUT /api/customers/:id - Perbarui data pelanggan
 router.put("/:id", (req, res) => {
-  const customer = db.data.customers.find(c => c.id === req.params.id);
+  const customer = db.getCustomerById(req.params.id);
   if (!customer) {
     return res.status(404).json({ success: false, message: "Pelanggan tidak ditemukan." });
   }
 
-  const { name, phone, address, addressNotes, currentGallonBalance, currentDebtBalance } = req.body;
-  if (name !== undefined) customer.name = name.trim();
-  if (phone !== undefined) customer.phone = phone.trim();
-  if (address !== undefined) customer.address = address.trim();
-  if (addressNotes !== undefined) customer.addressNotes = addressNotes.trim();
-  if (currentGallonBalance !== undefined) customer.currentGallonBalance = Number(currentGallonBalance);
-  if (currentDebtBalance !== undefined) customer.currentDebtBalance = Number(currentDebtBalance);
-
-  db.persist();
+  const updatedCustomer = db.updateCustomer(req.params.id, req.body);
 
   res.json({
     success: true,
     message: "Data pelanggan berhasil diperbarui.",
-    data: customer
+    data: updatedCustomer
   });
 });
 
 // DELETE /api/customers/:id - Hapus pelanggan (kecuali jika masih menyimpan galon)
 router.delete("/:id", (req, res) => {
-  const customer = db.data.customers.find(c => c.id === req.params.id);
+  const customer = db.getCustomerById(req.params.id);
   if (!customer) {
     return res.status(404).json({ success: false, message: "Pelanggan tidak ditemukan." });
   }
 
-  // Cek apakah pelanggan masih menyimpan/meminjam galon depot
   if ((customer.currentGallonBalance || 0) > 0) {
     return res.status(400).json({
       success: false,
@@ -126,19 +103,17 @@ router.delete("/:id", (req, res) => {
     });
   }
 
-  const index = db.data.customers.findIndex(c => c.id === req.params.id);
-  const deleted = db.data.customers.splice(index, 1)[0];
-  db.persist();
+  db.deleteCustomer(req.params.id);
 
   res.json({
     success: true,
-    message: `Pelanggan '${deleted.name}' berhasil dihapus.`
+    message: `Pelanggan '${customer.name}' berhasil dihapus.`
   });
 });
 
 // GET /api/customers/:id/custom-prices - Ambil daftar harga khusus pelanggan
 router.get("/:id/custom-prices", (req, res) => {
-  const customer = db.data.customers.find(c => c.id === req.params.id);
+  const customer = db.getCustomerById(req.params.id);
   if (!customer) {
     return res.status(404).json({ success: false, message: "Pelanggan tidak ditemukan." });
   }
@@ -151,7 +126,7 @@ router.get("/:id/custom-prices", (req, res) => {
 
 // POST /api/customers/:id/custom-prices - Pasang / ubah harga khusus pelanggan
 router.post("/:id/custom-prices", (req, res) => {
-  const customer = db.data.customers.find(c => c.id === req.params.id);
+  const customer = db.getCustomerById(req.params.id);
   if (!customer) {
     return res.status(404).json({ success: false, message: "Pelanggan tidak ditemukan." });
   }
@@ -161,51 +136,41 @@ router.post("/:id/custom-prices", (req, res) => {
     return res.status(400).json({ success: false, message: "productId wajib diisi." });
   }
 
-  const product = db.data.products.find(p => p.id === productId);
+  const product = db.getProductById(productId);
   if (!product) {
     return res.status(404).json({ success: false, message: "Produk tidak ditemukan." });
   }
 
-  if (!customer.customPrices) customer.customPrices = {};
-
-  const priceNum = Number(customPrice);
-  if (isNaN(priceNum) || priceNum <= 0) {
-    delete customer.customPrices[productId];
-  } else {
-    customer.customPrices[productId] = priceNum;
-  }
-
-  db.persist();
+  db.setCustomPrice(customer.id, productId, customPrice);
+  const updatedCustomer = db.getCustomerById(customer.id);
 
   res.json({
     success: true,
     message: `Harga khusus untuk produk '${product.name}' berhasil disimpan.`,
-    data: customer.customPrices
+    data: updatedCustomer.customPrices || {}
   });
 });
 
 // DELETE /api/customers/:id/custom-prices/:productId - Hapus harga khusus pelanggan (kembali ke harga standar)
 router.delete("/:id/custom-prices/:productId", (req, res) => {
-  const customer = db.data.customers.find(c => c.id === req.params.id);
+  const customer = db.getCustomerById(req.params.id);
   if (!customer) {
     return res.status(404).json({ success: false, message: "Pelanggan tidak ditemukan." });
   }
 
-  if (customer.customPrices && customer.customPrices[req.params.productId]) {
-    delete customer.customPrices[req.params.productId];
-    db.persist();
-  }
+  db.deleteCustomPrice(customer.id, req.params.productId);
+  const updatedCustomer = db.getCustomerById(customer.id);
 
   res.json({
     success: true,
     message: "Harga khusus dihapus, dikembalikan ke tarif standar produk.",
-    data: customer.customPrices || {}
+    data: updatedCustomer.customPrices || {}
   });
 });
 
 // POST /api/customers/:id/pay-debt - Pelunasan piutang pelanggan
 router.post("/:id/pay-debt", (req, res) => {
-  const customer = db.data.customers.find(c => c.id === req.params.id);
+  const customer = db.getCustomerById(req.params.id);
   if (!customer) {
     return res.status(404).json({ success: false, message: "Pelanggan tidak ditemukan." });
   }
@@ -218,11 +183,12 @@ router.post("/:id/pay-debt", (req, res) => {
   }
 
   const previousDebt = customer.currentDebtBalance || 0;
-  customer.currentDebtBalance = Math.max(0, previousDebt - payAmt);
+  const newDebt = Math.max(0, previousDebt - payAmt);
+  const updatedCustomer = db.updateCustomer(customer.id, { currentDebtBalance: newDebt });
 
-  const collectorUser = (collectedBy && db.data.users.find(u => u.id === collectedBy)) || req.user || { id: "usr-admin-1", name: "Hj. Asmawati (Owner)" };
+  const collectorUser = (collectedBy && db.getUserById(collectedBy)) || req.user || { id: "usr-admin-1", name: "Hj. Asmawati (Owner)" };
 
-  const paymentRecord = {
+  const paymentRecord = db.createPayment({
     id: `pay-debt-${Date.now()}`,
     orderId: null,
     customerId: customer.id,
@@ -233,16 +199,13 @@ router.post("/:id/pay-debt", (req, res) => {
     collectedByName: collectorUser.name,
     paymentDate: new Date().toISOString(),
     notes
-  };
-
-  db.data.payments.unshift(paymentRecord);
-  db.persist();
+  });
 
   res.json({
     success: true,
-    message: `Pelunasan piutang Rp ${payAmt.toLocaleString("id-ID")} berhasil dicatat. Sisa piutang: Rp ${customer.currentDebtBalance.toLocaleString("id-ID")}`,
+    message: `Pelunasan piutang Rp ${payAmt.toLocaleString("id-ID")} berhasil dicatat. Sisa piutang: Rp ${updatedCustomer.currentDebtBalance.toLocaleString("id-ID")}`,
     data: {
-      customer,
+      customer: updatedCustomer,
       payment: paymentRecord
     }
   });

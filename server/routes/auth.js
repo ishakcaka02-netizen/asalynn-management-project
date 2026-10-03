@@ -5,17 +5,16 @@ const router = Router();
 
 // GET /api/auth/profiles - Daftar profil untuk Quick Profile Selector di Landing Page
 router.get("/profiles", (req, res) => {
-  const profiles = db.data.users
-    .filter(u => u.isActive !== false)
-    .map(u => ({
-      id: u.id,
-      name: u.name,
-      phone: u.phone,
-      role: u.role,
-      vehicle: u.vehicle || null,
-      avatar: u.role === "admin" ? "👑" : "🛵",
-      pinHint: u.pin ? `${u.pin.slice(0, 1)}***` : "1234"
-    }));
+  const users = db.getUsers({ active: "true" });
+  const profiles = users.map(u => ({
+    id: u.id,
+    name: u.name,
+    phone: u.phone,
+    role: u.role,
+    vehicle: u.vehicle || null,
+    avatar: u.role === "admin" ? "👑" : "🛵",
+    pinHint: u.pin ? `${u.pin.slice(0, 1)}***` : "1234"
+  }));
 
   res.json({
     success: true,
@@ -36,12 +35,12 @@ router.post("/login", (req, res) => {
 
   let user = null;
   if (userId) {
-    user = db.data.users.find(u => u.id === userId && u.isActive !== false);
+    user = db.getUserById(userId);
   } else if (phone) {
-    user = db.data.users.find(u => u.phone === phone.trim() && u.isActive !== false);
+    user = db.getUserByPhone(phone);
   }
 
-  if (!user) {
+  if (!user || user.isActive === false) {
     return res.status(404).json({
       success: false,
       message: "Profil pengguna tidak ditemukan."
@@ -69,7 +68,7 @@ router.post("/login", (req, res) => {
   res.json({
     success: true,
     message: `Selamat datang kembali, ${user.name}!`,
-    token: user.id, // Sederhana untuk token sesi
+    token: user.id,
     data: safeUser
   });
 });

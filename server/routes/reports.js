@@ -7,7 +7,7 @@ const router = Router();
 router.get("/daily-summary", (req, res) => {
   const targetDate = req.query.date || getWitaDate();
 
-  const ordersToday = db.data.orders.filter(o => o.deliveryDate === targetDate);
+  const ordersToday = db.getOrders({ date: targetDate });
   const deliveredOrders = ordersToday.filter(o => o.deliveryStatus === "DELIVERED");
 
   let totalGallonsDelivered = 0;
@@ -32,16 +32,14 @@ router.get("/daily-summary", (req, res) => {
   });
 
   // Pembayaran pada tanggal target (WITA)
-  const paymentsToday = db.data.payments.filter(p => {
-    const pDate = getWitaDate(new Date(p.paymentDate));
-    return pDate === targetDate;
-  });
+  const paymentsToday = db.getPayments({ date: targetDate });
 
   let totalCashReceived = 0;
   let totalTransferReceived = 0;
   const courierCashTally = {};
 
-  db.data.users.filter(u => u.role === "courier").forEach(c => {
+  const couriers = db.getUsers({ role: "courier" });
+  couriers.forEach(c => {
     courierCashTally[c.id] = {
       name: c.name,
       vehicle: c.vehicle || "-",

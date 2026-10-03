@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asalynn Management — Sistem Pengantaran Galon & Kasir Depot</title>
+  <meta name="description" content="Aplikasi manajemen operasional depot air minum Asalynn. Pengelolaan pesanan WhatsApp, penugasan kurir, pencatatan galon kosong, dan rekonsiliasi kas harian zona WITA.">
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💧</text></svg>">
+</head>
+<body>
+  <!-- Header Aplikasi -->
+  <header class="app-header">
+    <div class="header-inner">
+      <!-- Logo & Nama Depot -->
+      <div class="brand-section">
+        <div class="brand-logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+          </svg>
+        </div>
+        <div class="brand-title-wrap">
+          <h1>ASALYNN DEPOT</h1>
+          <div class="brand-subtitle">Manajemen Galon & Pengantaran</div>
+        </div>
+      </div>
+
+      <!-- Live Clock Zona WITA -->
+      <div class="wita-pill" id="live-wita-clock" title="Zona Waktu Operasional Depot: Asia/Makassar">
+        <span class="pulse-dot"></span>
+        <span id="clock-display">00:00:00 WITA</span>
+      </div>
+
+      <!-- Role Switcher (Admin vs Kurir) -->
+      <div class="role-switcher">
+        <button type="button" class="role-btn active" id="btn-role-admin" data-role="admin">
+          <span>👑</span> Admin / Pemilik
+        </button>
+        <button type="button" class="role-btn" id="btn-role-courier" data-role="courier">
+          <span>🛵</span> Kurir Lapangan
+        </button>
+        <div class="courier-select-wrap" id="courier-select-container" style="display: none;">
+          <select id="select-active-courier" title="Pilih Pengantar">
+            <!-- Diisi otomatis dari JS -->
+          </select>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Container Utama -->
+  <main class="app-container">
+    <!-- Admin Navigation Tabs -->
+    <nav class="tab-navigation" id="admin-tabs">
+      <button type="button" class="nav-tab active" data-tab="orders">
+        <span>📦</span> Pesanan & Antaran
+      </button>
+      <button type="button" class="nav-tab" data-tab="customers">
+        <span>👥</span> Pelanggan & Piutang
+      </button>
+      <button type="button" class="nav-tab" data-tab="products">
+        <span>🏷️</span> Produk & Harga
+      </button>
+      <button type="button" class="nav-tab" data-tab="reconciliation">
+        <span>📊</span> Rekonsiliasi & Kas Harian
+      </button>
+    </nav>
+
+    <!-- Konten Dinamis -->
+    <section id="app-content">
+      <!-- Rendered by JavaScript -->
+    </section>
+  </main>
+
+  <!-- MODAL: Buat Pesanan Baru -->
+  <div class="modal-overlay" id="modal-create-order">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">📦 Input Pesanan Baru</h2>
+        <button type="button" class="modal-close-btn" data-close="modal-create-order">&times;</button>
+      </div>
+      <form id="form-create-order">
+        <div class="modal-body">
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label class="form-label" for="order-customer-select">Pilih Pelanggan *</label>
+              <button type="button" class="btn btn-sm btn-secondary" id="btn-quick-new-customer" style="padding: 2px 8px; font-size: 0.75rem;">+ Pelanggan Baru</button>
+            </div>
+            <select class="form-control" id="order-customer-select" required>
+              <option value="">-- Pilih Pelanggan --</option>
+            </select>
+          </div>
+
+          <!-- Preview Alamat & Info Pelanggan Terpilih -->
+          <div id="customer-preview-box" style="display: none; background: #f8fafc; padding: 0.75rem; border-radius: var(--radius-md); border: 1px solid var(--border-light); font-size: 0.8rem;">
+            <div><strong>Alamat:</strong> <span id="prev-cust-address">-</span></div>
+            <div style="color: var(--text-muted); margin-top: 2px;"><strong>Patokan:</strong> <span id="prev-cust-notes">-</span></div>
+            <div style="display: flex; gap: 1rem; margin-top: 4px; font-weight: 600;">
+              <span style="color: var(--primary-700);">Galon Dipinjam: <span id="prev-cust-gallons">0</span></span>
+              <span style="color: var(--accent-rose);">Sisa Piutang: <span id="prev-cust-debt">Rp 0</span></span>
+            </div>
+          </div>
+
+          <!-- Item Produk -->
+          <div class="form-group">
+            <label class="form-label">Daftar Produk yang Dipesan *</label>
+            <div id="order-items-container" style="display: flex; flex-direction: column; gap: 0.5rem;">
+              <!-- Item rows dinamis -->
+            </div>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-add-item-row" style="margin-top: 0.5rem; align-self: flex-start;">+ Tambah Produk Lain</button>
+          </div>
+
+          <!-- Estimasi Galon Kosong yang Harus Diambil -->
+          <div class="form-group">
+            <label class="form-label" for="order-empty-expected">Estimasi Galon Kosong Diambil (Tukar Galon)</label>
+            <input type="number" class="form-control" id="order-empty-expected" min="0" value="0">
+            <small style="color: var(--text-muted); font-size: 0.75rem;">Jumlah galon kosong milik depot yang diharapkan ditarik kembali saat kirim.</small>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div class="form-group">
+              <label class="form-label" for="order-delivery-date">Tanggal Kirim (WITA) *</label>
+              <input type="date" class="form-control" id="order-delivery-date" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="order-time-slot">Waktu Kirim</label>
+              <select class="form-control" id="order-time-slot">
+                <option value="Bebas">Kapan saja hari ini</option>
+                <option value="Pagi (08:30 - 11:30)">Pagi (08:30 - 11:30)</option>
+                <option value="Siang (13:00 - 15:30)">Siang (13:00 - 15:30)</option>
+                <option value="Sore (15:30 - 18:00)">Sore (15:30 - 18:00)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="order-courier-select">Tugaskan ke Kurir</label>
+            <select class="form-control" id="order-courier-select">
+              <option value="">-- Simpan dulu sebagai Antrean (Pending) --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="order-driver-notes">Catatan Pengantaran (Opsional)</label>
+            <textarea class="form-control" id="order-driver-notes" rows="2" placeholder="Contoh: Titip ke satpam / panggil Mas Anto"></textarea>
+          </div>
+
+          <!-- Total Estimasi -->
+          <div style="background: var(--primary-50); padding: 0.75rem 1rem; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600; color: var(--primary-900);">Total Estimasi Tagihan:</span>
+            <span id="order-calculated-total" style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 800; color: var(--primary-900);">Rp 0</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-create-order">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Pesanan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Selesaikan Pengantaran Kurir (Mobile First Stepper) -->
+  <div class="modal-overlay" id="modal-complete-delivery">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">✍️ Catat Realisasi Kiriman</h2>
+          <div id="modal-delivery-order-id" style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">-</div>
+        </div>
+        <button type="button" class="modal-close-btn" data-close="modal-complete-delivery">&times;</button>
+      </div>
+      <form id="form-complete-delivery">
+        <input type="hidden" id="delivery-order-id-input">
+        <div class="modal-body">
+          <div style="background: #f8fafc; padding: 0.75rem; border-radius: var(--radius-md); border: 1px solid var(--border-light);">
+            <div style="font-weight: 700; font-size: 1rem;" id="delivery-cust-name">-</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);" id="delivery-cust-address">-</div>
+          </div>
+
+          <!-- Realisasi Barang Terkirim Steppers -->
+          <div>
+            <label class="form-label" style="margin-bottom: 0.5rem; display: block;">Jumlah Barang Aktual Diterima Pelanggan:</label>
+            <div id="delivery-stepper-items" style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <!-- Diisi dinamis -->
+            </div>
+          </div>
+
+          <!-- Stepper Galon Kosong Kembali -->
+          <div class="form-group">
+            <label class="form-label">Galon Kosong Diambil Kembali (Tukar Galon):</label>
+            <div class="stepper-group">
+              <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Galon Kosong:</span>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <button type="button" class="stepper-btn" id="btn-empty-minus">-</button>
+                <span class="stepper-val" id="val-empty-returned">0</span>
+                <button type="button" class="stepper-btn" id="btn-empty-plus">+</button>
+              </div>
+            </div>
+            <small style="color: var(--text-muted); font-size: 0.75rem;">Kosongkan jika pelanggan pinjam galon tanpa tukar.</small>
+          </div>
+
+          <!-- Rangkuman Tagihan & Input Uang Diterima -->
+          <div style="border-top: 1px dashed var(--border-light); padding-top: 0.75rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+              <span>Total Tagihan Aktual:</span>
+              <strong id="delivery-actual-subtotal" style="font-size: 1.1rem; color: var(--primary-900);">Rp 0</strong>
+            </div>
+
+            <!-- Tombol Cepat Pembayaran -->
+            <label class="form-label">Uang yang Diterima:</label>
+            <div class="preset-pills" style="margin-bottom: 0.5rem;">
+              <button type="button" class="preset-pill active" id="preset-pas">Uang Pas (Lunas)</button>
+              <button type="button" class="preset-pill" id="preset-bon">Belum Bayar (Bon/Tempo)</button>
+            </div>
+
+            <div class="form-group">
+              <input type="number" class="form-control" id="delivery-amount-paid" min="0" placeholder="0" style="font-size: 1.2rem; font-weight: 700; color: #15803d;">
+            </div>
+
+            <div class="form-group" style="margin-top: 0.5rem;">
+              <label class="form-label">Metode Pembayaran:</label>
+              <select class="form-control" id="delivery-payment-method">
+                <option value="CASH">💵 Uang Tunai (Diterima Kurir)</option>
+                <option value="TRANSFER">📱 Transfer Bank / QRIS Langsung ke Pemilik</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin-top: 0.5rem;">
+              <label class="form-label" for="delivery-driver-notes">Catatan Lapangan (Opsional):</label>
+              <input type="text" class="form-control" id="delivery-driver-notes" placeholder="Misal: Diterima oleh Bu Ani / galon kosong 1 retak">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-complete-delivery">Batal</button>
+          <button type="submit" class="btn btn-emerald btn-lg" style="width: 100%;">✅ Simpan Pengantaran Selesai</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Tambah / Edit Pelanggan -->
+  <div class="modal-overlay" id="modal-customer">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-customer-title">👤 Tambah Pelanggan Baru</h2>
+        <button type="button" class="modal-close-btn" data-close="modal-customer">&times;</button>
+      </div>
+      <form id="form-customer">
+        <input type="hidden" id="cust-id-input">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="cust-name-input">Nama Pelanggan / Warung *</label>
+            <input type="text" class="form-control" id="cust-name-input" required placeholder="Contoh: Warung Coto Daeng Tata / Ibu Hj. Rosdiana">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cust-phone-input">Nomor WhatsApp / HP *</label>
+            <input type="tel" class="form-control" id="cust-phone-input" required placeholder="Contoh: 081234567890">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cust-address-input">Alamat Lengkap *</label>
+            <textarea class="form-control" id="cust-address-input" rows="2" required placeholder="Nama jalan, nomor rumah, kelurahan, perumahan"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cust-notes-input">Patokan / Petunjuk Lokasi Khusus</label>
+            <input type="text" class="form-control" id="cust-notes-input" placeholder="Contoh: Pagar hitam depan pos satpam / samping masjid">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-customer">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Data Pelanggan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Atur Harga Khusus Pelanggan -->
+  <div class="modal-overlay" id="modal-custom-price">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">🏷️ Harga Khusus Pelanggan</h2>
+          <div id="custom-price-cust-name" style="font-size: 0.85rem; color: var(--primary-700); font-weight: 600;">-</div>
+        </div>
+        <button type="button" class="modal-close-btn" data-close="modal-custom-price">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.8rem; color: var(--text-muted);">
+          Atur harga khusus untuk pelanggan ini. Jika dikosongkan, harga akan otomatis mengikuti harga standar produk.
+        </p>
+        <div id="custom-price-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <!-- Diisi dinamis -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="modal-custom-price">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Bayar Piutang Pelanggan -->
+  <div class="modal-overlay" id="modal-pay-debt">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">💰 Catat Pembayaran Piutang (Bon)</h2>
+        <button type="button" class="modal-close-btn" data-close="modal-pay-debt">&times;</button>
+      </div>
+      <form id="form-pay-debt">
+        <input type="hidden" id="pay-debt-cust-id">
+        <div class="modal-body">
+          <div style="background: #fff1f2; padding: 0.75rem; border-radius: var(--radius-md); border: 1px solid #fecdd3;">
+            <div style="font-size: 0.8rem; color: #be123c;">Sisa Piutang Saat Ini:</div>
+            <div style="font-family: var(--font-heading); font-size: 1.4rem; font-weight: 800; color: #be123c;" id="pay-debt-current-val">Rp 0</div>
+            <div id="pay-debt-cust-name-label" style="font-size: 0.85rem; font-weight: 600; color: #881337; margin-top: 2px;">-</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="pay-debt-amount">Jumlah Pembayaran Diterima (Rp) *</label>
+            <input type="number" class="form-control" id="pay-debt-amount" min="1" required style="font-size: 1.15rem; font-weight: 700;">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="pay-debt-method">Metode Pembayaran</label>
+            <select class="form-control" id="pay-debt-method">
+              <option value="CASH">💵 Uang Tunai</option>
+              <option value="TRANSFER">📱 Transfer Bank / QRIS</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="pay-debt-notes">Catatan Pembayaran</label>
+            <input type="text" class="form-control" id="pay-debt-notes" value="Pelunasan bon lama">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-pay-debt">Batal</button>
+          <button type="submit" class="btn btn-emerald">Simpan Pembayaran</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Batalkan Pesanan -->
+  <div class="modal-overlay" id="modal-cancel-order">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">❌ Batalkan Pesanan</h2>
+        <button type="button" class="modal-close-btn" data-close="modal-cancel-order">&times;</button>
+      </div>
+      <form id="form-cancel-order">
+        <input type="hidden" id="cancel-order-id">
+        <div class="modal-body">
+          <p style="font-size: 0.85rem; color: var(--text-muted);">
+            Sesuai aturan bisnis, data pesanan yang dibatalkan tidak akan dihapus permanen dari sistem melainkan disimpan sebagai riwayat audit.
+          </p>
+          <div class="form-group">
+            <label class="form-label" for="cancel-reason-input">Alasan Pembatalan *</label>
+            <textarea class="form-control" id="cancel-reason-input" rows="3" required placeholder="Contoh: Pelanggan tidak ada di tempat / pesanan duplikat / ganti jadwal"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-cancel-order">Kembali</button>
+          <button type="submit" class="btn btn-rose">Konfirmasi Batalkan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Tambah / Edit Produk -->
+  <div class="modal-overlay" id="modal-product">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-product-title">🏷️ Tambah Produk Baru</h2>
+        <button type="button" class="modal-close-btn" data-close="modal-product">&times;</button>
+      </div>
+      <form id="form-product">
+        <input type="hidden" id="prod-id-input">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="prod-name-input">Nama Produk *</label>
+            <input type="text" class="form-control" id="prod-name-input" required placeholder="Contoh: Refill Air Galon 19L">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="prod-price-input">Harga Standar (Rp) *</label>
+            <input type="number" class="form-control" id="prod-price-input" min="0" step="500" required placeholder="Contoh: 7000">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="prod-unit-input">Satuan *</label>
+            <input type="text" class="form-control" id="prod-unit-input" required placeholder="Galon / Dus / Botol / Pcs">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="prod-desc-input">Deskripsi Singkat</label>
+            <input type="text" class="form-control" id="prod-desc-input" placeholder="Keterangan isi, ukuran, atau spesifikasi">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-product">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Produk</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Script Modular -->
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

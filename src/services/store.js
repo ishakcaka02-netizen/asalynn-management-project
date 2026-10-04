@@ -170,6 +170,60 @@ class Store {
     this.save();
   }
 
+  // === USER PROFILE MANAGEMENT ===
+  updateCurrentUserName(newName) {
+    if (!this.data.currentUserId) {
+      return { success: false, message: "Belum ada sesi login aktif." };
+    }
+    if (!newName || !newName.trim()) {
+      return { success: false, message: "Nama pengguna tidak boleh kosong." };
+    }
+    const user = this.data.users.find(u => u.id === this.data.currentUserId);
+    if (!user) {
+      return { success: false, message: "Akun pengguna tidak ditemukan." };
+    }
+    const oldName = user.name;
+    user.name = newName.trim();
+    this.save();
+    return { success: true, oldName, newName: user.name };
+  }
+
+  updateCurrentUserPhone(newPhone) {
+    if (!this.data.currentUserId) {
+      return { success: false, message: "Belum ada sesi login aktif." };
+    }
+    if (!newPhone || !newPhone.trim()) {
+      return { success: false, message: "Nomor telepon tidak boleh kosong." };
+    }
+    const user = this.data.users.find(u => u.id === this.data.currentUserId);
+    if (!user) {
+      return { success: false, message: "Akun pengguna tidak ditemukan." };
+    }
+    user.phone = newPhone.trim();
+    this.save();
+    return { success: true, newPhone: user.phone };
+  }
+
+  updateCurrentUserPin(currentPin, newPin) {
+    if (!this.data.currentUserId) {
+      return { success: false, message: "Belum ada sesi login aktif." };
+    }
+    const user = this.data.users.find(u => u.id === this.data.currentUserId);
+    if (!user) {
+      return { success: false, message: "Akun pengguna tidak ditemukan." };
+    }
+    const correctPin = user.pin || "1234";
+    if (String(currentPin) !== String(correctPin)) {
+      return { success: false, message: "PIN lama yang Anda masukkan salah." };
+    }
+    if (!newPin || String(newPin).trim().length !== 4) {
+      return { success: false, message: "PIN baru harus terdiri dari 4 digit angka." };
+    }
+    user.pin = String(newPin).trim();
+    this.save();
+    return { success: true };
+  }
+
   // === CUSTOMER MANAGEMENT ===
   getCustomers() {
     return this.data.customers;

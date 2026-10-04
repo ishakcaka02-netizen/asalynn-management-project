@@ -228,6 +228,21 @@ function openSettingsModal() {
   if (ordersEl) ordersEl.textContent = `${store.data.orders.length} pesanan`;
   if (custsEl) custsEl.textContent = `${store.data.customers.length} orang`;
 
+  // Pre-fill profil pengguna aktif
+  const usernameInput = document.getElementById("settings-new-username");
+  const phoneInput = document.getElementById("settings-new-phone");
+  const currentPinInput = document.getElementById("settings-current-pin");
+  const newPinInput = document.getElementById("settings-new-pin");
+  const feedbackEl = document.getElementById("settings-profile-feedback");
+
+  if (currentUser) {
+    if (usernameInput) usernameInput.value = currentUser.name;
+    if (phoneInput) phoneInput.value = currentUser.phone;
+  }
+  if (currentPinInput) currentPinInput.value = "";
+  if (newPinInput) newPinInput.value = "";
+  if (feedbackEl) feedbackEl.style.display = "none";
+
   openModal("modal-global-settings");
 }
 
@@ -296,6 +311,70 @@ function initSettingsUI() {
     closeModal("modal-global-settings");
     showToast("✅ Database berhasil direset ke 0! Seluruh pelanggan & transaksi telah dikosongkan. Web siap digunakan dari awal.", "success");
     renderApp();
+  });
+
+  // === PROFILE MANAGEMENT HANDLERS ===
+
+  // Helper: tampilkan feedback di dalam modal settings
+  function showProfileFeedback(message, isSuccess) {
+    const fb = document.getElementById("settings-profile-feedback");
+    if (!fb) return;
+    fb.textContent = (isSuccess ? "✅ " : "⚠️ ") + message;
+    fb.style.display = "block";
+    fb.style.background = isSuccess ? "#f0fdf4" : "#fff1f2";
+    fb.style.color = isSuccess ? "#166534" : "#9f1239";
+    fb.style.border = `1px solid ${isSuccess ? "#bbf7d0" : "#fecdd3"}`;
+
+    // Auto-hide setelah 4 detik
+    setTimeout(() => {
+      fb.style.display = "none";
+    }, 4000);
+  }
+
+  // Ubah Nama Pengguna
+  document.getElementById("btn-save-username")?.addEventListener("click", () => {
+    const input = document.getElementById("settings-new-username");
+    const newName = input ? input.value : "";
+    const result = store.updateCurrentUserName(newName);
+    if (result.success) {
+      showProfileFeedback(`Nama berhasil diubah dari "${result.oldName}" menjadi "${result.newName}".`, true);
+      showToast(`Nama pengguna berhasil diubah menjadi "${result.newName}".`, "success");
+      updateHeaderAccountWidget();
+      renderApp();
+    } else {
+      showProfileFeedback(result.message, false);
+    }
+  });
+
+  // Ubah Nomor Telepon
+  document.getElementById("btn-save-phone")?.addEventListener("click", () => {
+    const input = document.getElementById("settings-new-phone");
+    const newPhone = input ? input.value : "";
+    const result = store.updateCurrentUserPhone(newPhone);
+    if (result.success) {
+      showProfileFeedback(`Nomor telepon berhasil diubah menjadi ${result.newPhone}.`, true);
+      showToast("Nomor telepon berhasil diperbarui.", "success");
+      updateHeaderAccountWidget();
+    } else {
+      showProfileFeedback(result.message, false);
+    }
+  });
+
+  // Ubah PIN Login
+  document.getElementById("btn-save-pin")?.addEventListener("click", () => {
+    const currentPinInput = document.getElementById("settings-current-pin");
+    const newPinInput = document.getElementById("settings-new-pin");
+    const currentPin = currentPinInput ? currentPinInput.value : "";
+    const newPin = newPinInput ? newPinInput.value : "";
+    const result = store.updateCurrentUserPin(currentPin, newPin);
+    if (result.success) {
+      showProfileFeedback("PIN login berhasil diperbarui.", true);
+      showToast("PIN login berhasil diubah.", "success");
+      if (currentPinInput) currentPinInput.value = "";
+      if (newPinInput) newPinInput.value = "";
+    } else {
+      showProfileFeedback(result.message, false);
+    }
   });
 }
 

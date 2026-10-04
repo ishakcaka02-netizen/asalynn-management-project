@@ -440,6 +440,54 @@
           </div>
         </div>
 
+        <!-- Kelola Profil Pengguna -->
+        <div style="border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1rem;">
+          <h4 style="font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 0.35rem;">
+            👤 Kelola Profil Pengguna
+          </h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+            Ubah nama tampilan, nomor telepon, atau PIN akun Anda yang sedang aktif.
+          </p>
+
+          <!-- Ubah Nama Pengguna -->
+          <div class="form-group" style="margin-bottom: 0.75rem;">
+            <label class="form-label" for="settings-new-username" style="font-size: 0.8rem; font-weight: 600;">Nama Pengguna</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="text" class="form-control" id="settings-new-username" placeholder="Masukkan nama baru" style="flex: 1; font-size: 0.85rem;">
+              <button type="button" class="btn btn-sm btn-primary" id="btn-save-username" style="white-space: nowrap; padding: 0.45rem 0.85rem; font-weight: 600;">
+                ✏️ Ubah Nama
+              </button>
+            </div>
+          </div>
+
+          <!-- Ubah Nomor Telepon -->
+          <div class="form-group" style="margin-bottom: 0.75rem;">
+            <label class="form-label" for="settings-new-phone" style="font-size: 0.8rem; font-weight: 600;">Nomor Telepon</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="tel" class="form-control" id="settings-new-phone" placeholder="Masukkan nomor telepon baru" style="flex: 1; font-size: 0.85rem;">
+              <button type="button" class="btn btn-sm btn-primary" id="btn-save-phone" style="white-space: nowrap; padding: 0.45rem 0.85rem; font-weight: 600;">
+                📱 Ubah
+              </button>
+            </div>
+          </div>
+
+          <!-- Ubah PIN -->
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 0.8rem; font-weight: 600;">Ubah PIN Login</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.5rem; align-items: center;">
+              <input type="password" maxlength="4" inputmode="numeric" pattern="[0-9]*" class="form-control" id="settings-current-pin" placeholder="PIN Lama" style="font-size: 0.85rem;">
+              <input type="password" maxlength="4" inputmode="numeric" pattern="[0-9]*" class="form-control" id="settings-new-pin" placeholder="PIN Baru" style="font-size: 0.85rem;">
+              <button type="button" class="btn btn-sm btn-primary" id="btn-save-pin" style="white-space: nowrap; padding: 0.45rem 0.85rem; font-weight: 600;">
+                🔑 Ubah
+              </button>
+            </div>
+            <small style="color: var(--text-muted); font-size: 0.72rem; margin-top: 0.25rem; display: block;">PIN harus terdiri dari 4 digit angka.</small>
+          </div>
+
+          <!-- Feedback Message -->
+          <div id="settings-profile-feedback" style="display: none; margin-top: 0.65rem; padding: 0.55rem 0.75rem; border-radius: var(--radius-md); font-size: 0.8rem; font-weight: 600;"></div>
+        </div>
+
         <!-- Cadangan & Pulihkan Data -->
         <div style="border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1rem;">
           <h4 style="font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 0.35rem;">

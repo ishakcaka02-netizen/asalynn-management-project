@@ -15,13 +15,14 @@ const DB_FILE = path.join(DATA_DIR, "asalynn.db");
 
 let drizzleDb = null;
 let sqlite = null;
+let client = null;
 
 const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL;
 const tursoToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
 
 if (tursoUrl) {
   try {
-    const client = createClient({ url: tursoUrl, authToken: tursoToken });
+    client = createClient({ url: tursoUrl, authToken: tursoToken });
     drizzleDb = drizzleLibsql(client, { schema });
     console.log("⚡ Connected to Turso Cloud Database");
   } catch (err) {
@@ -44,13 +45,9 @@ if (!drizzleDb) {
   }
 }
 
-export { drizzleDb };
+export { drizzleDb, client };
 
-// Inisialisasi tabel otomatis
-function initTables() {
-  if (!sqlite) return;
-  try {
-    sqlite.exec(`
+const TABLES_DDL = `
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -154,9 +151,25 @@ function initTables() {
       notes TEXT DEFAULT '',
       logged_at TEXT NOT NULL
     );
-  `);
-  } catch (err) {
-    console.warn("Table init skipped:", err.message);
+`;
+
+// Inisialisasi tabel otomatis
+async function initTables() {
+  if (client) {
+    try {
+      await client.executeMultiple(TABLES_DDL);
+      console.log("⚡ Turso Cloud DB schema verified/created successfully.");
+    } catch (err) {
+      console.warn("Turso Cloud schema init notice:", err.message);
+    }
+  }
+
+  if (sqlite) {
+    try {
+      sqlite.exec(TABLES_DDL);
+    } catch (err) {
+      console.warn("Table init skipped:", err.message);
+    }
   }
 }
 
@@ -622,15 +635,15 @@ export function seedDatabase(isZero = false) {
   }
 }
 
-// Cek jika database masih kosong, lakukan auto seed
-if (drizzleDb) {
+// Cek jika database lokal masih kosong, lakukan auto seed
+if (sqlite && drizzleDb) {
   try {
     const existingUsers = drizzleDb.select().from(schema.users).all();
     if (existingUsers.length === 0) {
       seedDatabase(false);
     }
   } catch (err) {
-    console.warn("Auto-seed skipped or failed:", err.message);
+    console.warn("Auto-seed local skipped or failed:", err.message);
   }
 }
 

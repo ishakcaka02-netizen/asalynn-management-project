@@ -1,5 +1,4 @@
 import { defineConfig } from "vite";
-import { app } from "./server/app.js";
 
 export default defineConfig({
   base: "/",
@@ -9,11 +8,13 @@ export default defineConfig({
   plugins: [
     {
       name: "asalynn-api-server",
-      configureServer(server) {
-        // Hubungkan Express API routes ke Vite dev server middlewares
+      async configureServer(server) {
+        // Hubungkan Express API routes hanya saat mode dev lokal
+        const { app } = await import("./server/app.js");
         server.middlewares.use(app);
       }
     }
   ]
 });
+
 

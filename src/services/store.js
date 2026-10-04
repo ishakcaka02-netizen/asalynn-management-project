@@ -37,64 +37,67 @@ class Store {
   constructor() {
     this.listeners = [];
     this.data = this.loadFromStorage();
+    this.isSyncing = false;
+    this.syncWithBackend();
+    this.setupAutoSync();
   }
 
-  loadFromStorage() {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const today = getWitaDate();
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        // Pastikan struktur lengkap
-        if (parsed.orders && parsed.customers && parsed.products) {
-          // Migrasi akun: pastikan field pin tersedia
-          if (parsed.users) {
-            parsed.users.forEach(u => {
-              if (!u.pin) {
-                if (u.id === "usr-admin-1") u.pin = "1234";
-                else if (u.id === "usr-courier-1") u.pin = "1111";
-                else if (u.id === "usr-courier-2") u.pin = "2222";
-                else u.pin = "1234";
-              }
-            });
-          }
-          // Pastikan pengguna selalu masuk ke Landing Page Menu Login jika belum ada sesi aktif
-          if (!sessionStorage.getItem("asalynn_session_active")) {
-            parsed.currentUserId = null;
-            parsed.currentRole = null;
-          } else if (parsed.currentRole === "courier") {
-            // Mode kurir dihapus — migrasi sesi lama ke admin
-            parsed.currentRole = "admin";
-          }
-          return parsed;
+  async syncWithBackend() {
+    if (this.isSyncing) return;
+    this.isSyncing = true;
+    try {
+      const res = await fetch("/api/system/export");
+      if (res.ok) {
+        const remoteData = await res.json();
+        if (remoteData && Array.isArray(remoteData.users) && Array.isArray(remoteData.products)) {
+          // Jaga variabel sesi lokal dari tab ini
+          const currentUserId = this.data.currentUserId;
+          const currentRole = this.data.currentRole;
+          const activeCourierId = this.data.activeCourierId;
+
+          this.data = {
+            ...remoteData,
+            currentUserId,
+            currentRole,
+            activeCourierId,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+          this.notify();
         }
-      } catch (e) {
-        console.error("Gagal mem-parsing local storage, mereset data default:", e);
       }
+    } catch (err) {
+      console.warn("Sinkronisasi cloud sedang offline, menggunakan cache lokal:", err);
+    } finally {
+      this.isSyncing = false;
     }
+  }
 
-    // Default state jika baru pertama kali dibuka (Kosongkan data untuk mulai fresh)
-    const zeroData = {
-      users: INITIAL_DATA.users,
-      products: INITIAL_DATA.products,
-      customers: [],
-      orders: [],
-      payments: [],
-      gallonLogs: [],
-      currentRole: null, // null = landing page login
-      activeCourierId: null,
-      currentUserId: null, // null = landing page login
-      lastUpdated: new Date().toISOString()
-    };
+  setupAutoSync() {
+    // Sinkronisasi otomatis saat tab kembali aktif
+    window.addEventListener("focus", () => this.syncWithBackend());
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(zeroData));
-    return zeroData;
+    // Polling setiap 10 detik agar perubahan dari device lain ter-update otomatis
+    setInterval(() => this.syncWithBackend(), 10000);
+  }
+
+  async pushToBackend() {
+    try {
+      await fetch("/api/system/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.data)
+      });
+    } catch (err) {
+      console.warn("Gagal menyimpan ke server cloud:", err);
+    }
   }
 
   save() {
     this.data.lastUpdated = new Date().toISOString();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
     this.notify();
+    this.pushToBackend();
   }
 
   subscribe(listener) {

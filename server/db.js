@@ -1,5 +1,7 @@
+import { createClient } from "@libsql/client";
+import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { drizzle as drizzleBetter } from "drizzle-orm/better-sqlite3";
 import { eq, and, or, like, desc, sql } from "drizzle-orm";
 import * as schema from "./db/schema.js";
 import path from "path";
@@ -11,20 +13,44 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE = path.join(DATA_DIR, "asalynn.db");
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+let drizzleDb = null;
+let sqlite = null;
+
+const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL;
+const tursoToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
+
+if (tursoUrl) {
+  try {
+    const client = createClient({ url: tursoUrl, authToken: tursoToken });
+    drizzleDb = drizzleLibsql(client, { schema });
+    console.log("⚡ Connected to Turso Cloud Database");
+  } catch (err) {
+    console.error("Failed to connect to Turso Cloud DB:", err);
+  }
 }
 
-// Inisialisasi koneksi SQLite & Drizzle ORM
-const sqlite = new Database(DB_FILE);
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
+if (!drizzleDb) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    sqlite = new Database(DB_FILE);
+    sqlite.pragma("journal_mode = WAL");
+    sqlite.pragma("foreign_keys = ON");
+    drizzleDb = drizzleBetter(sqlite, { schema });
+    console.log("📁 Connected to local SQLite file:", DB_FILE);
+  } catch (err) {
+    console.warn("Local SQLite file fallback (ephemeral environment / Vercel):", err.message);
+  }
+}
 
-export const drizzleDb = drizzle(sqlite, { schema });
+export { drizzleDb };
 
 // Inisialisasi tabel otomatis
 function initTables() {
-  sqlite.exec(`
+  if (!sqlite) return;
+  try {
+    sqlite.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -129,6 +155,9 @@ function initTables() {
       logged_at TEXT NOT NULL
     );
   `);
+  } catch (err) {
+    console.warn("Table init skipped:", err.message);
+  }
 }
 
 initTables();

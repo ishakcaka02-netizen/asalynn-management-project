@@ -695,18 +695,6 @@ export class DrizzleDatabaseHelper {
 
   // Users
   getUsers(filters = {}) {
-    if (drizzleDb && sqlite) {
-      try {
-        let query = drizzleDb.select().from(schema.users);
-        const conditions = [];
-        if (filters.role) conditions.push(eq(schema.users.role, filters.role));
-        if (filters.active !== undefined) conditions.push(eq(schema.users.isActive, filters.active === "true" || filters.active === true));
-        if (conditions.length > 0) query = query.where(and(...conditions));
-        return query.all().map(u => ({ ...u, isActive: Boolean(u.isActive) }));
-      } catch (e) {
-        console.warn("getUsers DB fallback:", e.message);
-      }
-    }
     let list = this._state.users || [];
     if (filters.role) list = list.filter(u => u.role === filters.role);
     if (filters.active !== undefined) list = list.filter(u => u.isActive === (filters.active === "true" || filters.active === true));
@@ -714,22 +702,10 @@ export class DrizzleDatabaseHelper {
   }
 
   getUserById(id) {
-    if (drizzleDb && sqlite) {
-      try {
-        const res = drizzleDb.select().from(schema.users).where(eq(schema.users.id, id)).get();
-        if (res) return { ...res, isActive: Boolean(res.isActive) };
-      } catch (e) {}
-    }
     return (this._state.users || []).find(u => u.id === id) || null;
   }
 
   getUserByPhone(phone) {
-    if (drizzleDb && sqlite) {
-      try {
-        const res = drizzleDb.select().from(schema.users).where(eq(schema.users.phone, phone.trim())).get();
-        if (res) return { ...res, isActive: Boolean(res.isActive) };
-      } catch (e) {}
-    }
     return (this._state.users || []).find(u => u.phone === phone.trim()) || null;
   }
 
@@ -746,12 +722,6 @@ export class DrizzleDatabaseHelper {
     };
     this._state.users = (this._state.users || []).filter(u => u.id !== data.id);
     this._state.users.push(newUser);
-
-    if (drizzleDb && sqlite) {
-      try {
-        drizzleDb.insert(schema.users).values(newUser).run();
-      } catch (e) {}
-    }
     return newUser;
   }
 
@@ -768,35 +738,15 @@ export class DrizzleDatabaseHelper {
     };
 
     this._state.users = (this._state.users || []).map(u => u.id === id ? updated : u);
-
-    if (drizzleDb && sqlite) {
-      try {
-        drizzleDb.update(schema.users).set(updated).where(eq(schema.users.id, id)).run();
-      } catch (e) {}
-    }
     return updated;
   }
 
   deleteUser(id) {
     this._state.users = (this._state.users || []).map(u => u.id === id ? { ...u, isActive: false } : u);
-    if (drizzleDb && sqlite) {
-      try {
-        drizzleDb.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, id)).run();
-      } catch (e) {}
-    }
   }
 
   // Products
   getProducts(filters = {}) {
-    if (drizzleDb && sqlite) {
-      try {
-        let query = drizzleDb.select().from(schema.products);
-        if (filters.active !== undefined) {
-          query = query.where(eq(schema.products.isActive, filters.active === "true" || filters.active === true));
-        }
-        return query.all().map(p => ({ ...p, isActive: Boolean(p.isActive) }));
-      } catch (e) {}
-    }
     let list = this._state.products || [];
     if (filters.active !== undefined) {
       list = list.filter(p => p.isActive === (filters.active === "true" || filters.active === true));

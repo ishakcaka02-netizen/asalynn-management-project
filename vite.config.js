@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import { app } from "./server/app.js";
 
 export default defineConfig({
-  base: "./",
+  base: "/",
   server: {
     port: 5173
   },

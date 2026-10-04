@@ -647,9 +647,13 @@ if (sqlite && drizzleDb) {
   }
 }
 
-// Wrapper DB Helper untuk kompatibilitas penuh & Drizzle ORM queries
+// Wrapper DB Helper untuk kompatibilitas penuh, Drizzle ORM queries, dan in-memory fallback
 export class DrizzleDatabaseHelper {
-  // getter .data untuk retro-kompatibilitas jika ada komponen membaca db.data
+  constructor() {
+    this._state = getInitialSeedData();
+  }
+
+  // getter .data untuk retro-kompatibilitas
   get data() {
     return {
       users: this.getUsers(),
@@ -663,50 +667,74 @@ export class DrizzleDatabaseHelper {
   }
 
   persist() {
-    // SQLite dengan WAL mode menyimpan transaksi secara instan ke disk
+    // Persistent
   }
 
   reset() {
-    seedDatabase(false);
+    this._state = getInitialSeedData();
+    if (drizzleDb && sqlite) {
+      try { seedDatabase(false); } catch (e) {}
+    }
     return this.data;
   }
 
   resetToZero() {
-    seedDatabase(true);
+    this._state = {
+      users: getInitialSeedData().users,
+      products: getInitialSeedData().products,
+      customers: [],
+      orders: [],
+      payments: [],
+      gallonLogs: []
+    };
+    if (drizzleDb && sqlite) {
+      try { seedDatabase(true); } catch (e) {}
+    }
     return this.data;
   }
 
   // Users
   getUsers(filters = {}) {
-    let query = drizzleDb.select().from(schema.users);
-    const conditions = [];
-    if (filters.role) {
-      conditions.push(eq(schema.users.role, filters.role));
+    if (drizzleDb && sqlite) {
+      try {
+        let query = drizzleDb.select().from(schema.users);
+        const conditions = [];
+        if (filters.role) conditions.push(eq(schema.users.role, filters.role));
+        if (filters.active !== undefined) conditions.push(eq(schema.users.isActive, filters.active === "true" || filters.active === true));
+        if (conditions.length > 0) query = query.where(and(...conditions));
+        return query.all().map(u => ({ ...u, isActive: Boolean(u.isActive) }));
+      } catch (e) {
+        console.warn("getUsers DB fallback:", e.message);
+      }
     }
-    if (filters.active !== undefined) {
-      conditions.push(eq(schema.users.isActive, filters.active === "true" || filters.active === true));
-    }
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-    return query.all().map(u => ({
-      ...u,
-      isActive: Boolean(u.isActive)
-    }));
+    let list = this._state.users || [];
+    if (filters.role) list = list.filter(u => u.role === filters.role);
+    if (filters.active !== undefined) list = list.filter(u => u.isActive === (filters.active === "true" || filters.active === true));
+    return list;
   }
 
   getUserById(id) {
-    const res = drizzleDb.select().from(schema.users).where(eq(schema.users.id, id)).get();
-    return res ? { ...res, isActive: Boolean(res.isActive) } : null;
+    if (drizzleDb && sqlite) {
+      try {
+        const res = drizzleDb.select().from(schema.users).where(eq(schema.users.id, id)).get();
+        if (res) return { ...res, isActive: Boolean(res.isActive) };
+      } catch (e) {}
+    }
+    return (this._state.users || []).find(u => u.id === id) || null;
   }
 
   getUserByPhone(phone) {
-    const res = drizzleDb.select().from(schema.users).where(eq(schema.users.phone, phone.trim())).get();
-    return res ? { ...res, isActive: Boolean(res.isActive) } : null;
+    if (drizzleDb && sqlite) {
+      try {
+        const res = drizzleDb.select().from(schema.users).where(eq(schema.users.phone, phone.trim())).get();
+        if (res) return { ...res, isActive: Boolean(res.isActive) };
+      } catch (e) {}
+    }
+    return (this._state.users || []).find(u => u.phone === phone.trim()) || null;
   }
 
   createUser(data) {
-    drizzleDb.insert(schema.users).values({
+    const newUser = {
       id: data.id,
       name: data.name,
       phone: data.phone,
@@ -715,347 +743,456 @@ export class DrizzleDatabaseHelper {
       vehicle: data.vehicle || null,
       isActive: data.isActive !== false,
       createdAt: getWitaIsoString()
-    }).run();
-    return this.getUserById(data.id);
+    };
+    this._state.users = (this._state.users || []).filter(u => u.id !== data.id);
+    this._state.users.push(newUser);
+
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.insert(schema.users).values(newUser).run();
+      } catch (e) {}
+    }
+    return newUser;
   }
 
   updateUser(id, data) {
-    const updateObj = {};
-    if (data.name !== undefined) updateObj.name = data.name.trim();
-    if (data.phone !== undefined) updateObj.phone = data.phone.trim();
-    if (data.role !== undefined) updateObj.role = data.role;
-    if (data.pin !== undefined) updateObj.pin = String(data.pin);
-    if (data.vehicle !== undefined) updateObj.vehicle = data.vehicle.trim() || null;
-    if (data.isActive !== undefined) updateObj.isActive = Boolean(data.isActive);
+    const existing = this.getUserById(id) || {};
+    const updated = {
+      ...existing,
+      ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+      ...(data.phone !== undefined ? { phone: data.phone.trim() } : {}),
+      ...(data.role !== undefined ? { role: data.role } : {}),
+      ...(data.pin !== undefined ? { pin: String(data.pin) } : {}),
+      ...(data.vehicle !== undefined ? { vehicle: data.vehicle.trim() || null } : {}),
+      ...(data.isActive !== undefined ? { isActive: Boolean(data.isActive) } : {})
+    };
 
-    if (Object.keys(updateObj).length > 0) {
-      drizzleDb.update(schema.users).set(updateObj).where(eq(schema.users.id, id)).run();
+    this._state.users = (this._state.users || []).map(u => u.id === id ? updated : u);
+
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.update(schema.users).set(updated).where(eq(schema.users.id, id)).run();
+      } catch (e) {}
     }
-    return this.getUserById(id);
+    return updated;
   }
 
   deleteUser(id) {
-    drizzleDb.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, id)).run();
+    this._state.users = (this._state.users || []).map(u => u.id === id ? { ...u, isActive: false } : u);
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, id)).run();
+      } catch (e) {}
+    }
   }
 
   // Products
   getProducts(filters = {}) {
-    let query = drizzleDb.select().from(schema.products);
-    if (filters.active !== undefined) {
-      query = query.where(eq(schema.products.isActive, filters.active === "true" || filters.active === true));
+    if (drizzleDb && sqlite) {
+      try {
+        let query = drizzleDb.select().from(schema.products);
+        if (filters.active !== undefined) {
+          query = query.where(eq(schema.products.isActive, filters.active === "true" || filters.active === true));
+        }
+        return query.all().map(p => ({ ...p, isActive: Boolean(p.isActive) }));
+      } catch (e) {}
     }
-    return query.all().map(p => ({
-      ...p,
-      isActive: Boolean(p.isActive)
-    }));
+    let list = this._state.products || [];
+    if (filters.active !== undefined) {
+      list = list.filter(p => p.isActive === (filters.active === "true" || filters.active === true));
+    }
+    return list;
   }
 
   getProductById(id) {
-    const res = drizzleDb.select().from(schema.products).where(eq(schema.products.id, id)).get();
-    return res ? { ...res, isActive: Boolean(res.isActive) } : null;
+    if (drizzleDb && sqlite) {
+      try {
+        const res = drizzleDb.select().from(schema.products).where(eq(schema.products.id, id)).get();
+        if (res) return { ...res, isActive: Boolean(res.isActive) };
+      } catch (e) {}
+    }
+    return (this._state.products || []).find(p => p.id === id) || null;
   }
 
   createProduct(data) {
-    drizzleDb.insert(schema.products).values({
+    const newProd = {
       id: data.id,
       name: data.name,
       code: data.code,
-      standardPrice: data.standardPrice,
+      standardPrice: Number(data.standardPrice),
       unit: data.unit || "Galon",
       description: data.description || "",
       isActive: data.isActive !== false
-    }).run();
-    return this.getProductById(data.id);
+    };
+    this._state.products = (this._state.products || []).filter(p => p.id !== data.id);
+    this._state.products.push(newProd);
+
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.insert(schema.products).values(newProd).run();
+      } catch (e) {}
+    }
+    return newProd;
   }
 
   updateProduct(id, data) {
-    const updateObj = {};
-    if (data.name !== undefined) updateObj.name = data.name.trim();
-    if (data.code !== undefined) updateObj.code = data.code.trim();
-    if (data.standardPrice !== undefined) updateObj.standardPrice = Number(data.standardPrice);
-    if (data.unit !== undefined) updateObj.unit = data.unit.trim();
-    if (data.description !== undefined) updateObj.description = data.description.trim();
-    if (data.isActive !== undefined) updateObj.isActive = Boolean(data.isActive);
+    const existing = this.getProductById(id) || {};
+    const updated = {
+      ...existing,
+      ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+      ...(data.code !== undefined ? { code: data.code.trim() } : {}),
+      ...(data.standardPrice !== undefined ? { standardPrice: Number(data.standardPrice) } : {}),
+      ...(data.unit !== undefined ? { unit: data.unit.trim() } : {}),
+      ...(data.description !== undefined ? { description: data.description.trim() } : {}),
+      ...(data.isActive !== undefined ? { isActive: Boolean(data.isActive) } : {})
+    };
 
-    if (Object.keys(updateObj).length > 0) {
-      drizzleDb.update(schema.products).set(updateObj).where(eq(schema.products.id, id)).run();
+    this._state.products = (this._state.products || []).map(p => p.id === id ? updated : p);
+
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.update(schema.products).set(updated).where(eq(schema.products.id, id)).run();
+      } catch (e) {}
     }
-    return this.getProductById(id);
+    return updated;
   }
 
   // Customers
   getCustomers(filters = {}) {
-    let rawCusts = drizzleDb.select().from(schema.customers).all();
+    if (drizzleDb && sqlite) {
+      try {
+        let rawCusts = drizzleDb.select().from(schema.customers).all();
+        if (filters.q && filters.q.trim()) {
+          const term = filters.q.trim().toLowerCase();
+          rawCusts = rawCusts.filter(c =>
+            c.name.toLowerCase().includes(term) ||
+            c.phone.toLowerCase().includes(term) ||
+            c.address.toLowerCase().includes(term)
+          );
+        }
+        const allPrices = drizzleDb.select().from(schema.customerCustomPrices).all();
+        return rawCusts.map(c => {
+          const customPrices = {};
+          allPrices.filter(p => p.customerId === c.id).forEach(p => {
+            customPrices[p.productId] = p.customPrice;
+          });
+          return { ...c, customPrices };
+        });
+      } catch (e) {}
+    }
+    let list = this._state.customers || [];
     if (filters.q && filters.q.trim()) {
       const term = filters.q.trim().toLowerCase();
-      rawCusts = rawCusts.filter(c =>
+      list = list.filter(c =>
         c.name.toLowerCase().includes(term) ||
         c.phone.toLowerCase().includes(term) ||
         c.address.toLowerCase().includes(term)
       );
     }
-
-    const allPrices = drizzleDb.select().from(schema.customerCustomPrices).all();
-    return rawCusts.map(c => {
-      const customPrices = {};
-      allPrices.filter(p => p.customerId === c.id).forEach(p => {
-        customPrices[p.productId] = p.customPrice;
-      });
-      return {
-        ...c,
-        customPrices
-      };
-    });
+    return list;
   }
 
   getCustomerById(id) {
-    const c = drizzleDb.select().from(schema.customers).where(eq(schema.customers.id, id)).get();
-    if (!c) return null;
-
-    const prices = drizzleDb.select().from(schema.customerCustomPrices).where(eq(schema.customerCustomPrices.customerId, id)).all();
-    const customPrices = {};
-    prices.forEach(p => {
-      customPrices[p.productId] = p.customPrice;
-    });
-
-    return {
-      ...c,
-      customPrices
-    };
+    if (drizzleDb && sqlite) {
+      try {
+        const c = drizzleDb.select().from(schema.customers).where(eq(schema.customers.id, id)).get();
+        if (c) {
+          const prices = drizzleDb.select().from(schema.customerCustomPrices).where(eq(schema.customerCustomPrices.customerId, id)).all();
+          const customPrices = {};
+          prices.forEach(p => { customPrices[p.productId] = p.customPrice; });
+          return { ...c, customPrices };
+        }
+      } catch (e) {}
+    }
+    return (this._state.customers || []).find(c => c.id === id) || null;
   }
 
   createCustomer(data) {
-    drizzleDb.insert(schema.customers).values({
+    const newCust = {
       id: data.id,
       name: data.name,
       phone: data.phone,
       address: data.address,
       addressNotes: data.addressNotes || "",
-      currentGallonBalance: data.currentGallonBalance || 0,
-      currentDebtBalance: data.currentDebtBalance || 0,
+      currentGallonBalance: Number(data.currentGallonBalance) || 0,
+      currentDebtBalance: Number(data.currentDebtBalance) || 0,
+      customPrices: data.customPrices || {},
       createdAt: data.createdAt || getWitaDate()
-    }).run();
-    return this.getCustomerById(data.id);
+    };
+    this._state.customers = (this._state.customers || []).filter(c => c.id !== data.id);
+    this._state.customers.push(newCust);
+
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.insert(schema.customers).values({
+          id: newCust.id,
+          name: newCust.name,
+          phone: newCust.phone,
+          address: newCust.address,
+          addressNotes: newCust.addressNotes,
+          currentGallonBalance: newCust.currentGallonBalance,
+          currentDebtBalance: newCust.currentDebtBalance,
+          createdAt: newCust.createdAt
+        }).run();
+      } catch (e) {}
+    }
+    return newCust;
   }
 
   updateCustomer(id, data) {
-    const updateObj = {};
-    if (data.name !== undefined) updateObj.name = data.name.trim();
-    if (data.phone !== undefined) updateObj.phone = data.phone.trim();
-    if (data.address !== undefined) updateObj.address = data.address.trim();
-    if (data.addressNotes !== undefined) updateObj.addressNotes = data.addressNotes.trim();
-    if (data.currentGallonBalance !== undefined) updateObj.currentGallonBalance = Number(data.currentGallonBalance);
-    if (data.currentDebtBalance !== undefined) updateObj.currentDebtBalance = Number(data.currentDebtBalance);
+    const existing = this.getCustomerById(id) || {};
+    const updated = {
+      ...existing,
+      ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+      ...(data.phone !== undefined ? { phone: data.phone.trim() } : {}),
+      ...(data.address !== undefined ? { address: data.address.trim() } : {}),
+      ...(data.addressNotes !== undefined ? { addressNotes: data.addressNotes.trim() } : {}),
+      ...(data.currentGallonBalance !== undefined ? { currentGallonBalance: Number(data.currentGallonBalance) } : {}),
+      ...(data.currentDebtBalance !== undefined ? { currentDebtBalance: Number(data.currentDebtBalance) } : {}),
+      ...(data.customPrices !== undefined ? { customPrices: data.customPrices } : {})
+    };
 
-    if (Object.keys(updateObj).length > 0) {
-      drizzleDb.update(schema.customers).set(updateObj).where(eq(schema.customers.id, id)).run();
+    this._state.customers = (this._state.customers || []).map(c => c.id === id ? updated : c);
+
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.update(schema.customers).set({
+          name: updated.name,
+          phone: updated.phone,
+          address: updated.address,
+          addressNotes: updated.addressNotes,
+          currentGallonBalance: updated.currentGallonBalance,
+          currentDebtBalance: updated.currentDebtBalance
+        }).where(eq(schema.customers.id, id)).run();
+      } catch (e) {}
     }
-    return this.getCustomerById(id);
+    return updated;
   }
 
   deleteCustomer(id) {
-    drizzleDb.delete(schema.customerCustomPrices).where(eq(schema.customerCustomPrices.customerId, id)).run();
-    drizzleDb.delete(schema.customers).where(eq(schema.customers.id, id)).run();
+    this._state.customers = (this._state.customers || []).filter(c => c.id !== id);
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.delete(schema.customerCustomPrices).where(eq(schema.customerCustomPrices.customerId, id)).run();
+        drizzleDb.delete(schema.customers).where(eq(schema.customers.id, id)).run();
+      } catch (e) {}
+    }
   }
 
-  // Harga Khusus
   setCustomPrice(customerId, productId, customPrice) {
     const priceNum = Number(customPrice);
-    drizzleDb.delete(schema.customerCustomPrices)
-      .where(and(eq(schema.customerCustomPrices.customerId, customerId), eq(schema.customerCustomPrices.productId, productId)))
-      .run();
-
-    if (!isNaN(priceNum) && priceNum > 0) {
-      drizzleDb.insert(schema.customerCustomPrices).values({
-        id: `cp-${customerId}-${productId}`,
-        customerId,
-        productId,
-        customPrice: priceNum
-      }).run();
+    const cust = this.getCustomerById(customerId);
+    if (cust) {
+      if (!cust.customPrices) cust.customPrices = {};
+      if (!isNaN(priceNum) && priceNum > 0) {
+        cust.customPrices[productId] = priceNum;
+      } else {
+        delete cust.customPrices[productId];
+      }
+    }
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.delete(schema.customerCustomPrices)
+          .where(and(eq(schema.customerCustomPrices.customerId, customerId), eq(schema.customerCustomPrices.productId, productId)))
+          .run();
+        if (!isNaN(priceNum) && priceNum > 0) {
+          drizzleDb.insert(schema.customerCustomPrices).values({
+            id: `cp-${customerId}-${productId}`,
+            customerId,
+            productId,
+            customPrice: priceNum
+          }).run();
+        }
+      } catch (e) {}
     }
   }
 
   deleteCustomPrice(customerId, productId) {
-    drizzleDb.delete(schema.customerCustomPrices)
-      .where(and(eq(schema.customerCustomPrices.customerId, customerId), eq(schema.customerCustomPrices.productId, productId)))
-      .run();
+    this.setCustomPrice(customerId, productId, 0);
   }
 
   getEffectivePrice(customerId, productId) {
-    const product = this.getProductById(productId);
-    if (!product) return 0;
-
-    const customEntry = drizzleDb.select().from(schema.customerCustomPrices)
-      .where(and(eq(schema.customerCustomPrices.customerId, customerId), eq(schema.customerCustomPrices.productId, productId)))
-      .get();
-
-    if (customEntry) {
-      return customEntry.customPrice;
+    const cust = this.getCustomerById(customerId);
+    if (cust && cust.customPrices && cust.customPrices[productId] !== undefined) {
+      return cust.customPrices[productId];
     }
-    return product.standardPrice;
+    const prod = this.getProductById(productId);
+    return prod ? prod.standardPrice : 0;
   }
 
   // Orders
   getOrders(filters = {}) {
-    let rawOrders = drizzleDb.select().from(schema.orders).all();
-
-    if (filters.date) {
-      rawOrders = rawOrders.filter(o => o.deliveryDate === filters.date);
+    if (drizzleDb && sqlite) {
+      try {
+        let rawOrders = drizzleDb.select().from(schema.orders).all();
+        if (filters.date) rawOrders = rawOrders.filter(o => o.deliveryDate === filters.date);
+        if (filters.courierId) rawOrders = rawOrders.filter(o => o.courierId === filters.courierId);
+        if (filters.status && filters.status !== "ALL") rawOrders = rawOrders.filter(o => o.deliveryStatus === filters.status);
+        if (filters.paymentStatus && filters.paymentStatus !== "ALL") rawOrders = rawOrders.filter(o => o.paymentStatus === filters.paymentStatus);
+        if (filters.customerId) rawOrders = rawOrders.filter(o => o.customerId === filters.customerId);
+        if (filters.q && filters.q.trim()) {
+          const term = filters.q.trim().toLowerCase();
+          rawOrders = rawOrders.filter(o =>
+            o.id.toLowerCase().includes(term) ||
+            o.customerName.toLowerCase().includes(term) ||
+            o.customerPhone.includes(term) ||
+            (o.courierName && o.courierName.toLowerCase().includes(term))
+          );
+        }
+        const allItems = drizzleDb.select().from(schema.orderItems).all();
+        return rawOrders.map(o => ({
+          ...o,
+          items: allItems.filter(it => it.orderId === o.id)
+        }));
+      } catch (e) {}
     }
-    if (filters.courierId) {
-      rawOrders = rawOrders.filter(o => o.courierId === filters.courierId);
-    }
-    if (filters.status && filters.status !== "ALL") {
-      rawOrders = rawOrders.filter(o => o.deliveryStatus === filters.status);
-    }
-    if (filters.paymentStatus && filters.paymentStatus !== "ALL") {
-      rawOrders = rawOrders.filter(o => o.paymentStatus === filters.paymentStatus);
-    }
-    if (filters.customerId) {
-      rawOrders = rawOrders.filter(o => o.customerId === filters.customerId);
-    }
+    let list = this._state.orders || [];
+    if (filters.date) list = list.filter(o => o.deliveryDate === filters.date);
+    if (filters.courierId) list = list.filter(o => o.courierId === filters.courierId);
+    if (filters.status && filters.status !== "ALL") list = list.filter(o => o.deliveryStatus === filters.status);
+    if (filters.paymentStatus && filters.paymentStatus !== "ALL") list = list.filter(o => o.paymentStatus === filters.paymentStatus);
+    if (filters.customerId) list = list.filter(o => o.customerId === filters.customerId);
     if (filters.q && filters.q.trim()) {
       const term = filters.q.trim().toLowerCase();
-      rawOrders = rawOrders.filter(o =>
+      list = list.filter(o =>
         o.id.toLowerCase().includes(term) ||
         o.customerName.toLowerCase().includes(term) ||
         o.customerPhone.includes(term) ||
         (o.courierName && o.courierName.toLowerCase().includes(term))
       );
     }
-
-    const allItems = drizzleDb.select().from(schema.orderItems).all();
-    return rawOrders.map(o => {
-      const items = allItems.filter(it => it.orderId === o.id).map(it => ({
-        productId: it.productId,
-        productName: it.productName,
-        unitPrice: it.unitPrice,
-        qtyOrdered: it.qtyOrdered,
-        qtyDelivered: it.qtyDelivered
-      }));
-      return {
-        ...o,
-        items
-      };
-    });
+    return list;
   }
 
   getOrderById(id) {
-    const o = drizzleDb.select().from(schema.orders).where(eq(schema.orders.id, id)).get();
-    if (!o) return null;
-
-    const items = drizzleDb.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, id)).all().map(it => ({
-      productId: it.productId,
-      productName: it.productName,
-      unitPrice: it.unitPrice,
-      qtyOrdered: it.qtyOrdered,
-      qtyDelivered: it.qtyDelivered
-    }));
-
-    return {
-      ...o,
-      items
-    };
+    if (drizzleDb && sqlite) {
+      try {
+        const o = drizzleDb.select().from(schema.orders).where(eq(schema.orders.id, id)).get();
+        if (o) {
+          const items = drizzleDb.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, id)).all();
+          return { ...o, items };
+        }
+      } catch (e) {}
+    }
+    return (this._state.orders || []).find(o => o.id === id) || null;
   }
 
   createOrder(data) {
-    drizzleDb.insert(schema.orders).values({
-      id: data.id,
-      customerId: data.customerId,
-      customerName: data.customerName,
-      customerPhone: data.customerPhone,
-      customerAddress: data.customerAddress,
-      addressNotes: data.addressNotes || "",
-      courierId: data.courierId || null,
-      courierName: data.courierName || "Belum Ditugaskan",
-      deliveryDate: data.deliveryDate,
-      deliveryTimeSlot: data.deliveryTimeSlot || "Bebas",
-      deliveryStatus: data.deliveryStatus || "PENDING",
-      paymentStatus: data.paymentStatus || "UNPAID",
-      emptyGallonsExpected: data.emptyGallonsExpected || 0,
-      emptyGallonsReturned: data.emptyGallonsReturned || 0,
-      subtotalOrdered: data.subtotalOrdered || 0,
-      subtotalActual: data.subtotalActual || 0,
-      totalPaid: data.totalPaid || 0,
-      paymentMethod: data.paymentMethod || "CASH",
-      driverNotes: data.driverNotes || "",
-      cancellationReason: data.cancellationReason || "",
+    const newOrder = {
+      ...data,
+      id: data.id || `ORD-${Date.now()}`,
+      items: data.items || [],
       createdAt: data.createdAt || getWitaIsoString()
-    }).run();
+    };
+    this._state.orders = (this._state.orders || []).filter(o => o.id !== newOrder.id);
+    this._state.orders.push(newOrder);
 
-    if (data.items && data.items.length > 0) {
-      data.items.forEach((it, idx) => {
-        drizzleDb.insert(schema.orderItems).values({
-          id: `item-${data.id}-${idx + 1}`,
-          orderId: data.id,
-          productId: it.productId,
-          productName: it.productName,
-          unitPrice: it.unitPrice,
-          qtyOrdered: it.qtyOrdered,
-          qtyDelivered: it.qtyDelivered !== undefined ? it.qtyDelivered : it.qtyOrdered
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.insert(schema.orders).values({
+          id: newOrder.id,
+          customerId: newOrder.customerId,
+          customerName: newOrder.customerName,
+          customerPhone: newOrder.customerPhone,
+          customerAddress: newOrder.customerAddress,
+          addressNotes: newOrder.addressNotes || "",
+          courierId: newOrder.courierId || null,
+          courierName: newOrder.courierName || "Belum Ditugaskan",
+          deliveryDate: newOrder.deliveryDate,
+          deliveryTimeSlot: newOrder.deliveryTimeSlot || "Bebas",
+          deliveryStatus: newOrder.deliveryStatus || "PENDING",
+          paymentStatus: newOrder.paymentStatus || "UNPAID",
+          emptyGallonsExpected: newOrder.emptyGallonsExpected || 0,
+          emptyGallonsReturned: newOrder.emptyGallonsReturned || 0,
+          subtotalOrdered: newOrder.subtotalOrdered || 0,
+          subtotalActual: newOrder.subtotalActual || 0,
+          totalPaid: newOrder.totalPaid || 0,
+          paymentMethod: newOrder.paymentMethod || "CASH",
+          driverNotes: newOrder.driverNotes || "",
+          cancellationReason: newOrder.cancellationReason || "",
+          createdAt: newOrder.createdAt
         }).run();
-      });
-    }
 
-    return this.getOrderById(data.id);
+        if (newOrder.items && newOrder.items.length > 0) {
+          newOrder.items.forEach((it, idx) => {
+            drizzleDb.insert(schema.orderItems).values({
+              id: `item-${newOrder.id}-${idx + 1}`,
+              orderId: newOrder.id,
+              productId: it.productId,
+              productName: it.productName,
+              unitPrice: it.unitPrice,
+              qtyOrdered: it.qtyOrdered,
+              qtyDelivered: it.qtyDelivered !== undefined ? it.qtyDelivered : it.qtyOrdered
+            }).run();
+          });
+        }
+      } catch (e) {}
+    }
+    return newOrder;
   }
 
   updateOrder(id, data) {
-    const updateObj = {};
-    if (data.courierId !== undefined) updateObj.courierId = data.courierId;
-    if (data.courierName !== undefined) updateObj.courierName = data.courierName;
-    if (data.deliveryStatus !== undefined) updateObj.deliveryStatus = data.deliveryStatus;
-    if (data.paymentStatus !== undefined) updateObj.paymentStatus = data.paymentStatus;
-    if (data.subtotalActual !== undefined) updateObj.subtotalActual = data.subtotalActual;
-    if (data.totalPaid !== undefined) updateObj.totalPaid = data.totalPaid;
-    if (data.paymentMethod !== undefined) updateObj.paymentMethod = data.paymentMethod;
-    if (data.driverNotes !== undefined) updateObj.driverNotes = data.driverNotes;
-    if (data.emptyGallonsReturned !== undefined) updateObj.emptyGallonsReturned = data.emptyGallonsReturned;
-    if (data.cancellationReason !== undefined) updateObj.cancellationReason = data.cancellationReason;
-    if (data.cancelledAt !== undefined) updateObj.cancelledAt = data.cancelledAt;
-    if (data.deliveredAt !== undefined) updateObj.deliveredAt = data.deliveredAt;
+    const existing = this.getOrderById(id) || {};
+    const updated = {
+      ...existing,
+      ...data,
+      ...(data.items ? { items: data.items } : {})
+    };
+    this._state.orders = (this._state.orders || []).map(o => o.id === id ? updated : o);
 
-    if (Object.keys(updateObj).length > 0) {
-      drizzleDb.update(schema.orders).set(updateObj).where(eq(schema.orders.id, id)).run();
+    if (drizzleDb && sqlite) {
+      try {
+        const { items, ...orderRow } = updated;
+        drizzleDb.update(schema.orders).set(orderRow).where(eq(schema.orders.id, id)).run();
+        if (data.items) {
+          drizzleDb.delete(schema.orderItems).where(eq(schema.orderItems.orderId, id)).run();
+          data.items.forEach((it, idx) => {
+            drizzleDb.insert(schema.orderItems).values({
+              id: `item-${id}-${idx + 1}`,
+              orderId: id,
+              productId: it.productId,
+              productName: it.productName,
+              unitPrice: it.unitPrice,
+              qtyOrdered: it.qtyOrdered,
+              qtyDelivered: it.qtyDelivered
+            }).run();
+          });
+        }
+      } catch (e) {}
     }
+    return updated;
+  }
 
-    if (data.items && Array.isArray(data.items)) {
-      drizzleDb.delete(schema.orderItems).where(eq(schema.orderItems.orderId, id)).run();
-      data.items.forEach((it, idx) => {
-        drizzleDb.insert(schema.orderItems).values({
-          id: `item-${id}-${idx + 1}`,
-          orderId: id,
-          productId: it.productId,
-          productName: it.productName,
-          unitPrice: it.unitPrice,
-          qtyOrdered: it.qtyOrdered,
-          qtyDelivered: it.qtyDelivered
-        }).run();
-      });
+  deleteOrder(id) {
+    this._state.orders = (this._state.orders || []).filter(o => o.id !== id);
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.delete(schema.orderItems).where(eq(schema.orderItems.orderId, id)).run();
+        drizzleDb.delete(schema.orders).where(eq(schema.orders.id, id)).run();
+      } catch (e) {}
     }
-
-    return this.getOrderById(id);
   }
 
   // Payments
   getPayments(filters = {}) {
-    let raw = drizzleDb.select().from(schema.payments).all();
-    if (filters.date) {
-      raw = raw.filter(p => getWitaDate(new Date(p.paymentDate)) === filters.date);
+    if (drizzleDb && sqlite) {
+      try {
+        let raw = drizzleDb.select().from(schema.payments).all();
+        if (filters.date) raw = raw.filter(p => getWitaDate(new Date(p.paymentDate)) === filters.date);
+        if (filters.orderId) raw = raw.filter(p => p.orderId === filters.orderId);
+        if (filters.customerId) raw = raw.filter(p => p.customerId === filters.customerId);
+        if (filters.collectedBy) raw = raw.filter(p => p.collectedBy === filters.collectedBy);
+        if (filters.method) raw = raw.filter(p => p.paymentMethod === filters.method.toUpperCase());
+        return raw.sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
+      } catch (e) {}
     }
-    if (filters.orderId) {
-      raw = raw.filter(p => p.orderId === filters.orderId);
-    }
-    if (filters.customerId) {
-      raw = raw.filter(p => p.customerId === filters.customerId);
-    }
-    if (filters.collectedBy) {
-      raw = raw.filter(p => p.collectedBy === filters.collectedBy);
-    }
-    if (filters.method) {
-      raw = raw.filter(p => p.paymentMethod === filters.method.toUpperCase());
-    }
-    return raw.sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
+    let list = this._state.payments || [];
+    if (filters.date) list = list.filter(p => getWitaDate(new Date(p.paymentDate)) === filters.date);
+    if (filters.orderId) list = list.filter(p => p.orderId === filters.orderId);
+    if (filters.customerId) list = list.filter(p => p.customerId === filters.customerId);
+    if (filters.collectedBy) list = list.filter(p => p.collectedBy === filters.collectedBy);
+    if (filters.method) list = list.filter(p => p.paymentMethod === filters.method.toUpperCase());
+    return list.sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
   }
 
   createPayment(data) {
@@ -1071,23 +1208,46 @@ export class DrizzleDatabaseHelper {
       paymentDate: data.paymentDate || getWitaIsoString(),
       notes: data.notes || ""
     };
-    drizzleDb.insert(schema.payments).values(payment).run();
+    this._state.payments = (this._state.payments || []).filter(p => p.id !== payment.id);
+    this._state.payments.push(payment);
+
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.insert(schema.payments).values(payment).run();
+      } catch (e) {}
+    }
     return payment;
+  }
+
+  getPaymentById(id) {
+    return (this._state.payments || []).find(p => p.id === id) || null;
+  }
+
+  deletePayment(id) {
+    this._state.payments = (this._state.payments || []).filter(p => p.id !== id);
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.delete(schema.payments).where(eq(schema.payments.id, id)).run();
+      } catch (e) {}
+    }
   }
 
   // Gallon Logs
   getGallonLogs(filters = {}) {
-    let raw = drizzleDb.select().from(schema.gallonLogs).all();
-    if (filters.customerId) {
-      raw = raw.filter(g => g.customerId === filters.customerId);
+    if (drizzleDb && sqlite) {
+      try {
+        let raw = drizzleDb.select().from(schema.gallonLogs).all();
+        if (filters.customerId) raw = raw.filter(g => g.customerId === filters.customerId);
+        if (filters.orderId) raw = raw.filter(g => g.orderId === filters.orderId);
+        if (filters.date) raw = raw.filter(g => getWitaDate(new Date(g.loggedAt)) === filters.date);
+        return raw.sort((a, b) => new Date(b.loggedAt) - new Date(a.loggedAt));
+      } catch (e) {}
     }
-    if (filters.orderId) {
-      raw = raw.filter(g => g.orderId === filters.orderId);
-    }
-    if (filters.date) {
-      raw = raw.filter(g => getWitaDate(new Date(g.loggedAt)) === filters.date);
-    }
-    return raw.sort((a, b) => new Date(b.loggedAt) - new Date(a.loggedAt));
+    let list = this._state.gallonLogs || [];
+    if (filters.customerId) list = list.filter(g => g.customerId === filters.customerId);
+    if (filters.orderId) list = list.filter(g => g.orderId === filters.orderId);
+    if (filters.date) list = list.filter(g => getWitaDate(new Date(g.loggedAt)) === filters.date);
+    return list.sort((a, b) => new Date(b.loggedAt) - new Date(a.loggedAt));
   }
 
   createGallonLog(data) {
@@ -1102,29 +1262,28 @@ export class DrizzleDatabaseHelper {
       notes: data.notes || "",
       loggedAt: data.loggedAt || getWitaIsoString()
     };
-    drizzleDb.insert(schema.gallonLogs).values(log).run();
+    this._state.gallonLogs = (this._state.gallonLogs || []).filter(g => g.id !== log.id);
+    this._state.gallonLogs.push(log);
+
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.insert(schema.gallonLogs).values(log).run();
+      } catch (e) {}
+    }
     return log;
   }
 
-  deleteOrder(id) {
-    drizzleDb.delete(schema.orderItems).where(eq(schema.orderItems.orderId, id)).run();
-    drizzleDb.delete(schema.orders).where(eq(schema.orders.id, id)).run();
-  }
-
-  getPaymentById(id) {
-    return drizzleDb.select().from(schema.payments).where(eq(schema.payments.id, id)).get() || null;
-  }
-
-  deletePayment(id) {
-    drizzleDb.delete(schema.payments).where(eq(schema.payments.id, id)).run();
-  }
-
   getGallonLogById(id) {
-    return drizzleDb.select().from(schema.gallonLogs).where(eq(schema.gallonLogs.id, id)).get() || null;
+    return (this._state.gallonLogs || []).find(g => g.id === id) || null;
   }
 
   deleteGallonLog(id) {
-    drizzleDb.delete(schema.gallonLogs).where(eq(schema.gallonLogs.id, id)).run();
+    this._state.gallonLogs = (this._state.gallonLogs || []).filter(g => g.id !== id);
+    if (drizzleDb && sqlite) {
+      try {
+        drizzleDb.delete(schema.gallonLogs).where(eq(schema.gallonLogs.id, id)).run();
+      } catch (e) {}
+    }
   }
 }
 

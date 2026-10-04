@@ -664,6 +664,39 @@ function initModalListeners() {
       }
     });
   });
+
+  // Stepper Galon Kosong Modal Pengantaran
+  document.getElementById("btn-empty-minus")?.addEventListener("click", () => {
+    if (currentEmptyReturned > 0) {
+      currentEmptyReturned--;
+      const el = document.getElementById("val-empty-returned");
+      if (el) el.textContent = currentEmptyReturned;
+    }
+  });
+  document.getElementById("btn-empty-plus")?.addEventListener("click", () => {
+    currentEmptyReturned++;
+    const el = document.getElementById("val-empty-returned");
+    if (el) el.textContent = currentEmptyReturned;
+  });
+
+  // Presets Bayar
+  document.getElementById("preset-pas")?.addEventListener("click", () => {
+    document.getElementById("preset-pas")?.classList.add("active");
+    document.getElementById("preset-bon")?.classList.remove("active");
+    updateDeliveryCalculations();
+  });
+
+  document.getElementById("preset-bon")?.addEventListener("click", () => {
+    document.getElementById("preset-bon")?.classList.add("active");
+    document.getElementById("preset-pas")?.classList.remove("active");
+    const amountInput = document.getElementById("delivery-amount-paid");
+    if (amountInput) amountInput.value = 0;
+  });
+
+  document.getElementById("delivery-amount-paid")?.addEventListener("input", () => {
+    document.getElementById("preset-pas")?.classList.remove("active");
+    document.getElementById("preset-bon")?.classList.remove("active");
+  });
 }
 
 // RENDER UTAMA
@@ -892,40 +925,11 @@ function updateDeliveryCalculations() {
   document.getElementById("delivery-actual-subtotal").textContent = formatRupiah(subtotal);
 
   // Jika preset 'Uang Pas' aktif, sinkronkan input uang diterima
-  if (document.getElementById("preset-pas").classList.contains("active")) {
-    document.getElementById("delivery-amount-paid").value = subtotal;
+  if (document.getElementById("preset-pas")?.classList.contains("active")) {
+    const amountInput = document.getElementById("delivery-amount-paid");
+    if (amountInput) amountInput.value = subtotal;
   }
 }
-
-// Stepper Galon Kosong
-document.getElementById("btn-empty-minus").addEventListener("click", () => {
-  if (currentEmptyReturned > 0) {
-    currentEmptyReturned--;
-    document.getElementById("val-empty-returned").textContent = currentEmptyReturned;
-  }
-});
-document.getElementById("btn-empty-plus").addEventListener("click", () => {
-  currentEmptyReturned++;
-  document.getElementById("val-empty-returned").textContent = currentEmptyReturned;
-});
-
-// Presets Bayar
-document.getElementById("preset-pas").addEventListener("click", () => {
-  document.getElementById("preset-pas").classList.add("active");
-  document.getElementById("preset-bon").classList.remove("active");
-  updateDeliveryCalculations();
-});
-
-document.getElementById("preset-bon").addEventListener("click", () => {
-  document.getElementById("preset-bon").classList.add("active");
-  document.getElementById("preset-pas").classList.remove("active");
-  document.getElementById("delivery-amount-paid").value = 0;
-});
-
-document.getElementById("delivery-amount-paid").addEventListener("input", () => {
-  document.getElementById("preset-pas").classList.remove("active");
-  document.getElementById("preset-bon").classList.remove("active");
-});
 
 
 // ==========================================
@@ -2004,19 +2008,19 @@ document.getElementById("btn-add-item-row").addEventListener("click", () => {
 function initFormHandlers() {
   // 1. Submit Form Pesanan Baru
   const formCreateOrder = document.getElementById("form-create-order");
-  formCreateOrder.addEventListener("submit", (e) => {
+  formCreateOrder?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const customerId = document.getElementById("order-customer-select").value;
+    const customerId = document.getElementById("order-customer-select")?.value;
     if (!customerId) {
       alert("Harap pilih pelanggan terlebih dahulu.");
       return;
     }
 
-    const courierId = document.getElementById("order-courier-select").value || null;
-    const deliveryDate = document.getElementById("order-delivery-date").value;
-    const deliveryTimeSlot = document.getElementById("order-time-slot").value;
-    const emptyGallonsExpected = document.getElementById("order-empty-expected").value;
-    const driverNotes = document.getElementById("order-driver-notes").value;
+    const courierId = document.getElementById("order-courier-select")?.value || null;
+    const deliveryDate = document.getElementById("order-delivery-date")?.value;
+    const deliveryTimeSlot = document.getElementById("order-time-slot")?.value;
+    const emptyGallonsExpected = document.getElementById("order-empty-expected")?.value;
+    const driverNotes = document.getElementById("order-driver-notes")?.value;
 
     const newOrder = store.createOrder({
       customerId,
@@ -2035,12 +2039,12 @@ function initFormHandlers() {
 
   // 2. Submit Form Selesaikan Pengantaran (Admin Dashboard)
   const formCompleteDelivery = document.getElementById("form-complete-delivery");
-  formCompleteDelivery.addEventListener("submit", (e) => {
+  formCompleteDelivery?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const orderId = document.getElementById("delivery-order-id-input").value;
-    const amountPaid = document.getElementById("delivery-amount-paid").value;
-    const paymentMethod = document.getElementById("delivery-payment-method").value;
-    const driverNotes = document.getElementById("delivery-driver-notes").value;
+    const orderId = document.getElementById("delivery-order-id-input")?.value;
+    const amountPaid = document.getElementById("delivery-amount-paid")?.value;
+    const paymentMethod = document.getElementById("delivery-payment-method")?.value;
+    const driverNotes = document.getElementById("delivery-driver-notes")?.value;
 
     store.completeDelivery({
       orderId,
@@ -2058,13 +2062,13 @@ function initFormHandlers() {
 
   // 3. Submit Form Pelanggan
   const formCustomer = document.getElementById("form-customer");
-  formCustomer.addEventListener("submit", (e) => {
+  formCustomer?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const id = document.getElementById("cust-id-input").value;
-    const name = document.getElementById("cust-name-input").value;
-    const phone = document.getElementById("cust-phone-input").value;
-    const address = document.getElementById("cust-address-input").value;
-    const addressNotes = document.getElementById("cust-notes-input").value;
+    const id = document.getElementById("cust-id-input")?.value;
+    const name = document.getElementById("cust-name-input")?.value;
+    const phone = document.getElementById("cust-phone-input")?.value;
+    const address = document.getElementById("cust-address-input")?.value;
+    const addressNotes = document.getElementById("cust-notes-input")?.value;
 
     if (id) {
       store.updateCustomer(id, { name, phone, address, addressNotes });
@@ -2072,7 +2076,6 @@ function initFormHandlers() {
     } else {
       const newCust = store.addCustomer({ name, phone, address, addressNotes });
       showToast(`Pelanggan "${newCust.name}" berhasil ditambahkan!`, "success");
-      // Jika form pesanan sedang dibuka, pilihkan pelanggan baru ini
       const custSelect = document.getElementById("order-customer-select");
       if (custSelect) {
         custSelect.value = newCust.id;
@@ -2086,13 +2089,13 @@ function initFormHandlers() {
 
   // 4. Submit Form Produk
   const formProduct = document.getElementById("form-product");
-  formProduct.addEventListener("submit", (e) => {
+  formProduct?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const id = document.getElementById("prod-id-input").value;
-    const name = document.getElementById("prod-name-input").value;
-    const standardPrice = document.getElementById("prod-price-input").value;
-    const unit = document.getElementById("prod-unit-input").value;
-    const description = document.getElementById("prod-desc-input").value;
+    const id = document.getElementById("prod-id-input")?.value;
+    const name = document.getElementById("prod-name-input")?.value;
+    const standardPrice = document.getElementById("prod-price-input")?.value;
+    const unit = document.getElementById("prod-unit-input")?.value;
+    const description = document.getElementById("prod-desc-input")?.value;
 
     if (id) {
       store.updateProduct(id, { name, standardPrice: Number(standardPrice), unit, description });
@@ -2108,12 +2111,12 @@ function initFormHandlers() {
 
   // 5. Submit Form Bayar Piutang
   const formPayDebt = document.getElementById("form-pay-debt");
-  formPayDebt.addEventListener("submit", (e) => {
+  formPayDebt?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const custId = document.getElementById("pay-debt-cust-id").value;
-    const amount = document.getElementById("pay-debt-amount").value;
-    const method = document.getElementById("pay-debt-method").value;
-    const notes = document.getElementById("pay-debt-notes").value;
+    const custId = document.getElementById("pay-debt-cust-id")?.value;
+    const amount = document.getElementById("pay-debt-amount")?.value;
+    const method = document.getElementById("pay-debt-method")?.value;
+    const notes = document.getElementById("pay-debt-notes")?.value;
 
     store.payCustomerDebt(custId, amount, method, notes);
     closeModal("modal-pay-debt");
@@ -2123,9 +2126,9 @@ function initFormHandlers() {
 
   // 6. Submit Form Batalkan Pesanan (Konfirmasi Ya / Oke)
   const formCancelOrder = document.getElementById("form-cancel-order");
-  formCancelOrder.addEventListener("submit", (e) => {
+  formCancelOrder?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const orderId = document.getElementById("cancel-order-id").value;
+    const orderId = document.getElementById("cancel-order-id")?.value;
 
     store.cancelOrder(orderId, "Dibatalkan oleh pengguna (Ya/Oke)");
     closeModal("modal-cancel-order");

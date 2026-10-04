@@ -39,7 +39,7 @@ let customerSearchQuery = "";
 let reconciliationDate = getWitaDate();
 
 // Inisialisasi Aplikasi
-document.addEventListener("DOMContentLoaded", () => {
+function initApp() {
   initClock();
   initTabNavigation();
   initModalListeners();
@@ -56,7 +56,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // Render awal
   updateHeaderAccountWidget();
   renderApp();
-});
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initApp);
+} else {
+  initApp();
+}
 
 // ==========================================
 // 0. AUTHENTICATION & LOGIN MENU CONTROLLER

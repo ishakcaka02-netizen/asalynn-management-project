@@ -623,9 +623,15 @@ export function seedDatabase(isZero = false) {
 }
 
 // Cek jika database masih kosong, lakukan auto seed
-const existingUsers = drizzleDb.select().from(schema.users).all();
-if (existingUsers.length === 0) {
-  seedDatabase(false);
+if (drizzleDb) {
+  try {
+    const existingUsers = drizzleDb.select().from(schema.users).all();
+    if (existingUsers.length === 0) {
+      seedDatabase(false);
+    }
+  } catch (err) {
+    console.warn("Auto-seed skipped or failed:", err.message);
+  }
 }
 
 // Wrapper DB Helper untuk kompatibilitas penuh & Drizzle ORM queries

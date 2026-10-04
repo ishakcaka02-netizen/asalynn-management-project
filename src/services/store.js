@@ -36,10 +36,40 @@ export function formatRupiah(amount) {
 class Store {
   constructor() {
     this.listeners = [];
-    this.data = this.loadFromStorage();
     this.isSyncing = false;
+    // Load dari localStorage dulu agar UI langsung tampil
+    this.data = this.loadFromStorage();
+    // Langsung ambil data terbaru dari server (async, tidak blocking)
     this.syncWithBackend();
     this.setupAutoSync();
+  }
+
+  loadFromStorage() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Validasi minimal: harus ada users & products
+        if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Gagal membaca localStorage, gunakan data awal:", e);
+    }
+    // Fallback ke data awal jika localStorage kosong/rusak
+    return {
+      users: INITIAL_DATA.users,
+      products: INITIAL_DATA.products,
+      customers: [],
+      orders: [],
+      payments: [],
+      gallonLogs: [],
+      currentUserId: null,
+      currentRole: null,
+      activeCourierId: null,
+      lastUpdated: null
+    };
   }
 
   async syncWithBackend() {
@@ -49,8 +79,8 @@ class Store {
       const res = await fetch("/api/system/export");
       if (res.ok) {
         const remoteData = await res.json();
-        if (remoteData && Array.isArray(remoteData.users) && Array.isArray(remoteData.products)) {
-          // Jaga variabel sesi lokal dari tab ini
+        if (remoteData && Array.isArray(remoteData.users) && remoteData.users.length > 0) {
+          // PENTING: Selalu jaga session login lokal — jangan di-overwrite dari server
           const currentUserId = this.data.currentUserId;
           const currentRole = this.data.currentRole;
           const activeCourierId = this.data.activeCourierId;
@@ -76,9 +106,8 @@ class Store {
   setupAutoSync() {
     // Sinkronisasi otomatis saat tab kembali aktif
     window.addEventListener("focus", () => this.syncWithBackend());
-
-    // Polling setiap 10 detik agar perubahan dari device lain ter-update otomatis
-    setInterval(() => this.syncWithBackend(), 10000);
+    // Polling setiap 15 detik agar perubahan dari device lain ter-update
+    setInterval(() => this.syncWithBackend(), 15000);
   }
 
   async pushToBackend() {
